@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Temp files
+temp_bellhop/
+.Trash-0/
+
+# IDE
+.vscode/
+
+# Personal / cloud cache (do not commit)
+.autodl/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

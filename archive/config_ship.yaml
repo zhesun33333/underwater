@@ -1,0 +1,73 @@
+# ============================================================
+# 水声大模型数据合成管线 — 舰船辐射噪声专用配置
+# ============================================================
+
+# ---- 路径配置 ----
+paths:
+  raw_data: "raw_data"
+  processed_audio: "processed_audio"
+  qa_output: "qa_output"
+  bellhop_exe: "bellhop/bellhop"
+  ssp_nc: "acoustic_model_100profiles.nc"
+  temp_dir: "temp_bellhop"
+
+# ---- 数据集配置 ----
+dataset:
+  name: "05_ship_radiated_noise"
+  json_subdir: "json"       # 每个 class 子目录下的 JSON 文件夹名
+  wav_subdir: "wav"         # 每个 class 子目录下的 WAV 文件夹名
+  json_ext: ".json"
+
+  # 舰船子类别 (对应 raw_data/05_ship_radiated_noise/ 下的子目录名)
+  classes:
+    - cargo_ship
+    - cruise_ship
+    - fishing_boat
+    - warship
+    - underwater_target
+
+  # 三级分类标签
+  category_mapping:
+    radiated_noise: { L1: "被动信号", L2: "舰船辐射噪声" }
+
+# ---- BELLHOP 信道参数 ----
+channel:
+  num_channels_per_audio: 2
+  water_depth_m_range: [20, 300]
+  range_km_range: [0.2, 10.0]
+  use_json_geometry: true
+  geometry_jitter_pct: 0.1
+  max_arrivals: 20
+  bottom:
+    type: "silt"
+    sound_speed_mps: 1520
+    density_gcc: 1.4
+    attenuation_db_per_lambda: 3.0
+  frequency:
+    # 舰船辐射噪声无单一中心频率，使用多点频率做宽带 CIR
+    ship_freqs_hz: [50, 100, 200, 400, 800, 1600]
+
+# ---- QA 生成配置 ----
+qa:
+  mode: "template"
+
+  api:
+    base_url: "https://api.deepseek.com/v1"
+    api_key_env: "DEEPSEEK_API_KEY"
+    model: "deepseek-chat"
+    max_tokens: 512
+    temperature: 0.8
+    max_retries: 3
+    timeout_s: 30
+
+  hybrid:
+    api_rewrite_ratio: 0.2
+
+  # 模板定义见 pipeline_ship_step2_qa.py:
+  #   T1_TEMPLATES (8) + T2_TEMPLATES (6, ship专用) + T3_PROMPT (1)
+
+# ---- 运行控制 ----
+limits:
+  max_samples: null
+  random_seed: 42
+  skip_existing: true

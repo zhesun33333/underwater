@@ -1,0 +1,32 @@
+{
+  "id": "lfm_027996",
+  "wav_path": "wav_by_type/LFM/lfm_027996.wav",
+  "has_target": true,
+  "signal_type": "LFM",
+  "signal_category": "pulse",
+  "signal_duration_s": 0.9,
+  "signal_params": {
+    "subband_index": 4,
+    "subband_low_hz": 3500,
+    "subband_high_hz": 7500,
+    "center_freq_hz": 7132.9,
+    "band_low_hz": 6460.7,
+    "band_high_hz": 7805.2,
+    "generator": "Sig_Gernerate_NEW",
+    "start_freq_hz": 7805.2,
+    "end_freq_hz": 6460.7,
+    "bandwidth_hz": 1344.5,
+    "sweep_direction": "downsweep",
+    "pulse_width_s": 0.9
+  },
+  "source_level_db": 219.5,
+  "source_depth_m": 18.3,
+  "receiver_depth_m": 42.1,
+  "water_depth_m": 100,
+  "range_m": 5420.2,
+  "ssp_source": null,
+  "snr_after_mix_db": null,
+  "audio_duration_s": 30,
+  "model_fs_hz": 16000,
+  "num_channels": 1
+}

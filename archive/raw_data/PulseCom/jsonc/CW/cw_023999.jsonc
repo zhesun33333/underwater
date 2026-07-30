@@ -1,0 +1,28 @@
+{
+  "id": "cw_023999",
+  "wav_path": "wav_by_type/CW/cw_023999.wav",
+  "has_target": true,
+  "signal_type": "CW",
+  "signal_category": "pulse",
+  "signal_duration_s": 0.8,
+  "signal_params": {
+    "subband_index": 4,
+    "subband_low_hz": 3500,
+    "subband_high_hz": 7500,
+    "center_freq_hz": 5648.7,
+    "band_low_hz": 5083.8,
+    "band_high_hz": 6213.6,
+    "generator": "Sig_Gernerate_NEW",
+    "pulse_width_s": 0.8
+  },
+  "source_level_db": 209.5,
+  "source_depth_m": 15.9,
+  "receiver_depth_m": 7.4,
+  "water_depth_m": 100,
+  "range_m": 25632.4,
+  "ssp_source": null,
+  "snr_after_mix_db": null,
+  "audio_duration_s": 30,
+  "model_fs_hz": 16000,
+  "num_channels": 1
+}

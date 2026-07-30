@@ -1,0 +1,67 @@
+# ============================================================
+# 水声大模型数据合成管线 — 全局配置文件
+# ============================================================
+
+# ---- 路径配置 ----
+paths:
+  raw_data: "raw_data"                          # 原始数据根目录
+  processed_audio: "processed_audio"            # BELLHOP 卷积后输出
+  qa_output: "qa_output"                        # 最终训练 JSONL
+  bellhop_exe: "bellhop/bellhop"                  # BELLHOP 可执行文件 (相对于运行目录)
+  ssp_nc: "acoustic_model_100profiles.nc"         # SSP NetCDF 文件 (相对于运行目录)
+  temp_dir: "temp_bellhop"                      # BELLHOP 临时运行目录
+
+# ---- 数据集子目录配置 ----
+datasets:
+  pulsecom:
+    name: "PulseCom"
+    json_dir: "jsonc"                           # 相对于 PulseCom/
+    wav_dir: "wav_by_type"
+    json_ext: ".jsonc"                          # 含 // 和 /* */ 注释
+    # 信号类别到三级的映射 (从 JSON 字段推断)
+    category_mapping:
+      pulse:       { L1: "主动信号", L2: "探测脉冲类" }
+      communication: { L1: "主动信号", L2: "通信类" }
+    # L3 直接取 signal_type 字段
+
+
+# ---- BELLHOP 信道参数 ----
+channel:
+  num_channels_per_audio: 2                     # 每条音频跑几个不同 SSP
+  water_depth_m_range: [20, 300]                # 如果 JSON 里 water_depth_m 为空则随机
+  range_km_range: [0.2, 10.0]                   # 如果 JSON 里 range_m 无效则随机
+  use_json_geometry: true                       # 优先使用 JSON 中的几何参数
+  geometry_jitter_pct: 0.1                      # 在 JSON 几何参数上添加 ±10% 抖动
+  max_arrivals: 20                              # 保留的到达条数上限
+  bottom:
+    type: "silt"
+    sound_speed_mps: 1520
+    density_gcc: 1.4
+    attenuation_db_per_lambda: 3.0
+  frequency:
+    # PulseCom 信号使用 signal_params.center_freq_hz 运行单频 BELLHOP
+
+# ---- QA 生成配置 ----
+qa:
+  mode: "template"                              # "template" | "api" | "hybrid"
+
+  api:
+    base_url: "https://api.deepseek.com/v1"
+    api_key_env: "DEEPSEEK_API_KEY"
+    model: "deepseek-chat"
+    max_tokens: 512
+    temperature: 0.8
+    max_retries: 3
+    timeout_s: 30
+
+  hybrid:
+    api_rewrite_ratio: 0.2
+
+  # 模板定义见 pipeline_step2_qa.py:
+  #   T1_TEMPLATES (8) + T2_TEMPLATES (8) + T3_PROMPT (1)
+
+# ---- 运行控制 ----
+limits:
+  max_samples: null                             # null=全量，数字=限制条数
+  random_seed: 42
+  skip_existing: true                           # 跳过已处理的音频

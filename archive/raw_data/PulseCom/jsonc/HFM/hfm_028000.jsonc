@@ -1,0 +1,32 @@
+{
+  "id": "hfm_028000",
+  "wav_path": "wav_by_type/HFM/hfm_028000.wav",
+  "has_target": true,
+  "signal_type": "HFM",
+  "signal_category": "pulse",
+  "signal_duration_s": 1,
+  "signal_params": {
+    "subband_index": 4,
+    "subband_low_hz": 3500,
+    "subband_high_hz": 7500,
+    "center_freq_hz": 4798.7,
+    "band_low_hz": 4461.9,
+    "band_high_hz": 5135.5,
+    "generator": "Sig_Gernerate_NEW",
+    "start_freq_hz": 4461.9,
+    "end_freq_hz": 5135.5,
+    "bandwidth_hz": 673.6,
+    "sweep_direction": "upsweep",
+    "pulse_width_s": 1.0
+  },
+  "source_level_db": 205.0,
+  "source_depth_m": 16.4,
+  "receiver_depth_m": 18.1,
+  "water_depth_m": 100,
+  "range_m": 9598.3,
+  "ssp_source": null,
+  "snr_after_mix_db": null,
+  "audio_duration_s": 30,
+  "model_fs_hz": 16000,
+  "num_channels": 1
+}

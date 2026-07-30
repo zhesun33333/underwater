@@ -1,0 +1,386 @@
+{
+  "id": "underwater_target_015995",
+  "wav_path": "underwater_target/wav/underwater_target_015995.wav",
+  "has_target": true,
+  "signal_type": "SHIP",
+  "signal_category": "radiated_noise",
+  "sub_type": "underwater_target",
+  "signal_duration_s": 22.9948125,
+  "signal_params": {
+    "ship_type": "underwater_target",
+    "original_class_name": "underwater_target",
+    "class_name_zh": "水下目标",
+    "speed_kt": [],
+    "blade_count": 5,
+    "shaft_freq_hz": 17.571721030308243,
+    "blade_freq_hz": 87.858605151541212,
+    "shaft_mod_coeff": 0.065964573633481918,
+    "blade_mod_coeff": 0.065964573633481918,
+    "other_mod_freqs_hz": [
+      74.7136369581581,
+      53.864724330344,
+      3.4043734270085282,
+      48.606016597725962
+    ],
+    "other_mod_coeffs": [
+      0.050216478162114629,
+      0.028896173420634531,
+      0.02299902735583418,
+      0.018584205688063384
+    ],
+    "spl_1k_db": 120.27120629563268,
+    "platform_freq_hz": 300,
+    "slope_db_per_octave": -6,
+    "num_lines": 4,
+    "line_frequency_range_hz": [
+      10,
+      200
+    ],
+    "line_snr_definition": "line spectral level minus local continuous-spectrum level at the same frequency",
+    "lines": [
+      {
+        "frequency_hz": 39.945994630564954,
+        "source_type": "random_mechanical",
+        "harmonic_order": 0,
+        "design_line_snr_db": 7.676953769308505,
+        "background_spl_db": 130.69299986062993,
+        "line_spl_db": 138.36995362993844,
+        "amplitude": 11.922964794206086,
+        "phase_rad": 2.0665109108560253,
+        "measured_line_snr_db": 7.677181087273496
+      },
+      {
+        "frequency_hz": 89.473443539051488,
+        "source_type": "random_mechanical",
+        "harmonic_order": 0,
+        "design_line_snr_db": 9.8097447041530721,
+        "background_spl_db": 130.69299986062993,
+        "line_spl_db": 140.502744564783,
+        "amplitude": 14.461013255004225,
+        "phase_rad": 3.856617421180446,
+        "measured_line_snr_db": 9.8111198113132616
+      },
+      {
+        "frequency_hz": 106.74435443954573,
+        "source_type": "random_mechanical",
+        "harmonic_order": 0,
+        "design_line_snr_db": 7.7895152177702789,
+        "background_spl_db": 130.69299986062993,
+        "line_spl_db": 138.48251507840021,
+        "amplitude": 12.818633896419414,
+        "phase_rad": 6.0686031763699182,
+        "measured_line_snr_db": 7.7746622451163461
+      },
+      {
+        "frequency_hz": 122.78207004107776,
+        "source_type": "shaft_harmonic",
+        "harmonic_order": 7,
+        "design_line_snr_db": 8.7091957297437155,
+        "background_spl_db": 130.69299986062993,
+        "line_spl_db": 139.40219559037365,
+        "amplitude": 16.055285493248391,
+        "phase_rad": 0.78451500619433656,
+        "measured_line_snr_db": 8.7067765383165927
+      }
+    ]
+  },
+  "source_depth_m": 69.002691235877649,
+  "receiver_depth_m": 116.84929163955154,
+  "water_depth_m": [],
+  "range_m": 2687.0755656236429,
+  "ssp_source": {
+    "dataset": "not_recorded",
+    "latitude_deg": [],
+    "longitude_deg": [],
+    "month": []
+  },
+  "snr_after_mix_db": -12.665205741190384,
+  "audio_duration_s": 22.9948125,
+  "model_fs_hz": 16000,
+  "num_channels": 1,
+  "geometry": {
+    "tx_depth_m": 69.002691235877649,
+    "rx_depth_m": 116.84929163955154,
+    "distance_km": 2.6870755656236427,
+    "transmission_loss_db_for_record_only": 68.585597595666854,
+    "range_m": 2687.0755656236429
+  },
+  "line_spectrum": {
+    "num_lines": 4,
+    "frequency_range_hz": [
+      10,
+      200
+    ],
+    "design_line_snr_range_db": [
+      6,
+      10
+    ],
+    "frequency_generation_rule": "A subset of line spectra is physically coupled to shaft-frequency harmonics, blade frequency, and blade-frequency harmonics; the remaining lines are random mechanical tonal components.",
+    "min_frequency_separation_hz": 3,
+    "local_snr_definition": "line spectral level minus local continuous-spectrum level at the same frequency",
+    "measured_local_snr_definition": "center line-bin power divided by the average background power within +/-0.5 Hz excluding +/-0.1 Hz, corrected from the rectangular-window ENBW to a 1 Hz reference noise bandwidth",
+    "local_snr_band_hz": 0.5,
+    "local_snr_exclude_hz": 0.1,
+    "measured_snr_reference_bandwidth_hz": 1,
+    "snr_analysis_window": "rectangular",
+    "snr_analysis_window_sec": 22.9948125,
+    "snr_analysis_nfft": 524288,
+    "snr_analysis_enbw_hz": 0.043488069319982496,
+    "snr_time_gain_correction_db": -13.616298726816439,
+    "lines": [
+      {
+        "frequency_hz": 39.945994630564954,
+        "source_type": "random_mechanical",
+        "harmonic_order": 0,
+        "design_line_snr_db": 7.676953769308505,
+        "background_spl_db": 130.69299986062993,
+        "line_spl_db": 138.36995362993844,
+        "amplitude": 11.922964794206086,
+        "phase_rad": 2.0665109108560253,
+        "measured_line_snr_db": 7.677181087273496
+      },
+      {
+        "frequency_hz": 89.473443539051488,
+        "source_type": "random_mechanical",
+        "harmonic_order": 0,
+        "design_line_snr_db": 9.8097447041530721,
+        "background_spl_db": 130.69299986062993,
+        "line_spl_db": 140.502744564783,
+        "amplitude": 14.461013255004225,
+        "phase_rad": 3.856617421180446,
+        "measured_line_snr_db": 9.8111198113132616
+      },
+      {
+        "frequency_hz": 106.74435443954573,
+        "source_type": "random_mechanical",
+        "harmonic_order": 0,
+        "design_line_snr_db": 7.7895152177702789,
+        "background_spl_db": 130.69299986062993,
+        "line_spl_db": 138.48251507840021,
+        "amplitude": 12.818633896419414,
+        "phase_rad": 6.0686031763699182,
+        "measured_line_snr_db": 7.7746622451163461
+      },
+      {
+        "frequency_hz": 122.78207004107776,
+        "source_type": "shaft_harmonic",
+        "harmonic_order": 7,
+        "design_line_snr_db": 8.7091957297437155,
+        "background_spl_db": 130.69299986062993,
+        "line_spl_db": 139.40219559037365,
+        "amplitude": 16.055285493248391,
+        "phase_rad": 0.78451500619433656,
+        "measured_line_snr_db": 8.7067765383165927
+      }
+    ]
+  },
+  "conversion_notes": {
+    "source_schema": "original_ship_radiated_noise_metadata",
+    "target_schema": "metadata_schema_v1",
+    "water_depth_m": "not recorded in original metadata; encoded as JSON null",
+    "ssp_source": "not recorded in original metadata; dataset is not_recorded and numeric fields are JSON null",
+    "snr_after_mix_db": "global SNR computed as 10*log10(mean(line_sig.^2)/mean(noise.^2)); line_sig reconstructed from line_spectrum.lines frequency/amplitude/phase; noise reconstructed as physical WAV mixture minus line_sig",
+    "line_spectrum": "original line_spectrum is preserved, including lines[].measured_line_snr_db",
+    "geometry": "original geometry is preserved; source_depth_m/receiver_depth_m/range_m are schema aliases of tx_depth_m/rx_depth_m/distance_km*1000",
+    "sub_type": "derived from original class_name; cruise_ship and underwater_target are outside the schema examples but preserved truthfully"
+  },
+  "original_metadata": {
+    "index": 15995,
+    "class_name": "underwater_target",
+    "class_name_zh": "水下目标",
+    "fs": 16000,
+    "duration_sec": 22.9948125,
+    "num_samples": 367917,
+    "normalization": "none; waveform amplitude is not globally normalized",
+    "continuous_spectrum": {
+      "SPL1K_db": 120.27120629563268,
+      "platform_freq_hz": 300,
+      "slope_db_per_octave": -6,
+      "ar_order": 32,
+      "is_white_noise": false,
+      "background_power_before_modulation": 7072.1061339434718,
+      "description": "Below 300 Hz the spectrum is flat; above 300 Hz it decays at 6 dB per octave relative to the 1 kHz reference spectral level."
+    },
+    "propeller": {
+      "blade_number": 5,
+      "shaft_freq_hz": 17.571721030308243,
+      "blade_freq_hz": 87.858605151541212,
+      "shaft_mod_coeff": 0.065964573633481918,
+      "blade_mod_coeff": 0.065964573633481918,
+      "other_mod_freqs_hz": [
+        74.7136369581581,
+        53.864724330344,
+        3.4043734270085282,
+        48.606016597725962
+      ],
+      "other_mod_coeffs": [
+        0.050216478162114629,
+        0.028896173420634531,
+        0.02299902735583418,
+        0.018584205688063384
+      ],
+      "modulation_rule": "The shaft frequency and blade frequency have the strongest modulation coefficients; all other modulation coefficients are smaller."
+    },
+    "geometry": {
+      "tx_depth_m": 69.002691235877649,
+      "rx_depth_m": 116.84929163955154,
+      "distance_km": 2.6870755656236427,
+      "transmission_loss_db_for_record_only": 68.585597595666854
+    },
+    "line_spectrum": {
+      "num_lines": 4,
+      "frequency_range_hz": [
+        10,
+        200
+      ],
+      "design_line_snr_range_db": [
+        6,
+        10
+      ],
+      "frequency_generation_rule": "A subset of line spectra is physically coupled to shaft-frequency harmonics, blade frequency, and blade-frequency harmonics; the remaining lines are random mechanical tonal components.",
+      "min_frequency_separation_hz": 3,
+      "local_snr_definition": "line spectral level minus local continuous-spectrum level at the same frequency",
+      "measured_local_snr_definition": "center line-bin power divided by the average background power within +/-0.5 Hz excluding +/-0.1 Hz, corrected from the rectangular-window ENBW to a 1 Hz reference noise bandwidth",
+      "local_snr_band_hz": 0.5,
+      "local_snr_exclude_hz": 0.1,
+      "measured_snr_reference_bandwidth_hz": 1,
+      "snr_analysis_window": "rectangular",
+      "snr_analysis_window_sec": 22.9948125,
+      "snr_analysis_nfft": 524288,
+      "snr_analysis_enbw_hz": 0.043488069319982496,
+      "snr_time_gain_correction_db": -13.616298726816439,
+      "lines": [
+        {
+          "frequency_hz": 39.945994630564954,
+          "source_type": "random_mechanical",
+          "harmonic_order": 0,
+          "design_line_snr_db": 7.676953769308505,
+          "background_spl_db": 130.69299986062993,
+          "line_spl_db": 138.36995362993844,
+          "amplitude": 11.922964794206086,
+          "phase_rad": 2.0665109108560253,
+          "measured_line_snr_db": 7.677181087273496
+        },
+        {
+          "frequency_hz": 89.473443539051488,
+          "source_type": "random_mechanical",
+          "harmonic_order": 0,
+          "design_line_snr_db": 9.8097447041530721,
+          "background_spl_db": 130.69299986062993,
+          "line_spl_db": 140.502744564783,
+          "amplitude": 14.461013255004225,
+          "phase_rad": 3.856617421180446,
+          "measured_line_snr_db": 9.8111198113132616
+        },
+        {
+          "frequency_hz": 106.74435443954573,
+          "source_type": "random_mechanical",
+          "harmonic_order": 0,
+          "design_line_snr_db": 7.7895152177702789,
+          "background_spl_db": 130.69299986062993,
+          "line_spl_db": 138.48251507840021,
+          "amplitude": 12.818633896419414,
+          "phase_rad": 6.0686031763699182,
+          "measured_line_snr_db": 7.7746622451163461
+        },
+        {
+          "frequency_hz": 122.78207004107776,
+          "source_type": "shaft_harmonic",
+          "harmonic_order": 7,
+          "design_line_snr_db": 8.7091957297437155,
+          "background_spl_db": 130.69299986062993,
+          "line_spl_db": 139.40219559037365,
+          "amplitude": 16.055285493248391,
+          "phase_rad": 0.78451500619433656,
+          "measured_line_snr_db": 8.7067765383165927
+        }
+      ]
+    },
+    "random_seed": 2.0276608E+7,
+    "wav_storage": {
+      "scale_to_pcm": 1E-5,
+      "bits_per_sample": 32,
+      "restore_physical_amplitude": "physical_signal = audioread(wav_path) / scale_to_pcm",
+      "saved_signal": "mixture only: bg_modulated + line_sig"
+    }
+  },
+  "field_descriptions": {
+    "id": "样本唯一编号，与音频和 JSON 文件主名一致，例如 cargo_ship_000001。",
+    "wav_path": "16 kHz 单通道 WAV 音频在数据集内部的相对路径。",
+    "has_target": "是否存在目标信号；本数据集均为 true。",
+    "signal_type": "信号主类型；本数据集为 SHIP，表示舰船/水下目标辐射噪声。",
+    "signal_category": "信号粗类别；SHIP 对应 radiated_noise。",
+    "sub_type": "信号子类型，由原始 class_name 映射得到；cruise 和 underwater_target 为扩展子类型。",
+    "signal_duration_s": "目标信号实际持续时间，单位 s；连续船噪样本中与 audio_duration_s 一致。",
+    "signal_params": {
+      "ship_type": "舰船/目标子类型，与 sub_type 一致。",
+      "original_class_name": "转换前原始类别英文名。",
+      "class_name_zh": "转换前原始类别中文名。",
+      "speed_kt": "航速，单位 kt；原始生成阶段未记录时为 null。",
+      "blade_count": "螺旋桨桨叶数量。",
+      "shaft_freq_hz": "螺旋桨轴频，单位 Hz。",
+      "blade_freq_hz": "叶频，等于桨叶数乘以轴频，单位 Hz。",
+      "shaft_mod_coeff": "轴频对应的幅度调制系数。",
+      "blade_mod_coeff": "叶频对应的幅度调制系数。",
+      "other_mod_freqs_hz": "其他机械幅度调制频率，单位 Hz；可能为标量或数组。",
+      "other_mod_coeffs": "其他机械调制频率对应的幅度调制系数；可能为标量或数组。",
+      "spl_1k_db": "1 kHz 处连续谱参考谱级，单位 dB。",
+      "platform_freq_hz": "低频连续谱平台截止频率，单位 Hz。",
+      "slope_db_per_octave": "平台截止频率以上连续谱随倍频程变化的斜率，单位 dB/oct。",
+      "num_lines": "当前样本包含的线谱数量。",
+      "line_frequency_range_hz": "允许生成线谱的频率范围，单位 Hz。",
+      "line_snr_definition": "线谱局部 SNR 的定义。",
+      "lines": "线谱明细数组；每个元素记录一根线谱的频率、来源、谐波阶数、幅度、相位和局部 SNR。"
+    },
+    "source_depth_m": "声源/发射器深度，单位 m；对应 geometry.tx_depth_m。",
+    "receiver_depth_m": "接收器深度，单位 m；对应 geometry.rx_depth_m。",
+    "water_depth_m": "水深，单位 m；原始生成阶段未记录时为 null。",
+    "range_m": "声源与接收器之间的水平距离，单位 m；对应 geometry.distance_km*1000。",
+    "ssp_source": {
+      "dataset": "声速剖面数据来源；原始生成阶段未记录时为 not_recorded。",
+      "latitude_deg": "声速剖面格点纬度，单位度；未记录时为 null。",
+      "longitude_deg": "声速剖面格点经度，单位度；未记录时为 null。",
+      "month": "声速剖面月份；未记录时为 null。"
+    },
+    "snr_after_mix_db": "合成后整体 SNR，单位 dB；由 WAV 混合信号减去重建线谱目标信号得到背景噪声后计算。",
+    "audio_duration_s": "最终 WAV 总时长，单位 s。",
+    "model_fs_hz": "模型输入采样率，单位 Hz；本数据集统一为 16000。",
+    "num_channels": "音频通道数；本数据集统一为 1。",
+    "geometry": {
+      "tx_depth_m": "声源/发射器深度，单位 m；每条样本独立随机生成。",
+      "rx_depth_m": "接收器深度，单位 m；每条样本独立随机生成。",
+      "distance_km": "声源与接收器之间的水平距离，单位 km；每条样本独立随机生成。",
+      "transmission_loss_db_for_record_only": "按球面扩展公式计算的记录用传播损失，单位 dB；当前未施加到波形。",
+      "range_m": "声源与接收器之间的水平距离，单位 m。"
+    },
+    "line_spectrum": {
+      "num_lines": "当前样本包含的线谱数量。",
+      "frequency_range_hz": "允许生成线谱的频率范围，单位 Hz。",
+      "design_line_snr_range_db": "每根线谱预设局部 SNR 的随机取值范围，单位 dB。",
+      "frequency_generation_rule": "物理关联线谱和随机机械线谱的频率生成规则。",
+      "min_frequency_separation_hz": "任意两根线谱之间允许的最小频率间隔，单位 Hz。",
+      "local_snr_definition": "预设线谱局部 SNR 的定义。",
+      "measured_local_snr_definition": "实测线谱局部 SNR 的频谱计算方法。",
+      "local_snr_band_hz": "估计局部连续谱背景时，以线频为中心的半带宽，单位 Hz。",
+      "local_snr_exclude_hz": "估计背景时在线频中心两侧排除的半带宽，单位 Hz。",
+      "measured_snr_reference_bandwidth_hz": "实测线谱局部 SNR 最终换算到的参考噪声带宽，单位 Hz。",
+      "snr_analysis_window": "计算和标定线谱局部 SNR 使用的时间窗类型。",
+      "snr_analysis_window_sec": "计算线谱局部 SNR 使用的时间窗长度，单位 s。",
+      "snr_analysis_nfft": "线谱局部 SNR 分析使用的 FFT 点数。",
+      "snr_analysis_enbw_hz": "线谱局部 SNR 分析窗的等效噪声带宽，单位 Hz。",
+      "snr_time_gain_correction_db": "从分析窗带宽换算到 1 Hz 参考带宽时使用的修正量，单位 dB。",
+      "lines": {
+        "frequency_hz": "该线谱的频率，单位 Hz。",
+        "source_type": "线谱来源类型，例如轴频谐波、叶频谐波或随机机械线谱。",
+        "harmonic_order": "物理关联线谱的谐波阶数；随机机械线谱为 0。",
+        "design_line_snr_db": "随机预设并用于幅值标定的线谱局部 SNR，单位 dB。",
+        "background_spl_db": "目标连续谱曲线在该线频处的理论背景谱级，单位 dB。",
+        "line_spl_db": "理论线谱谱级，等于理论背景谱级加预设局部 SNR，单位 dB。",
+        "amplitude": "按实际调制背景和统一线谱局部 SNR 测量方法标定后的时域正弦峰值幅度。",
+        "phase_rad": "线谱正弦信号的初始相位，单位 rad。",
+        "measured_line_snr_db": "生成后按矩形窗、局部背景频带和 1 Hz 参考带宽实测的线谱局部 SNR，单位 dB。"
+      }
+    },
+    "conversion_notes": "metadata_schema_v1 转换说明，记录缺失字段、扩展子类型和 SNR 计算方法。"
+  }
+}
