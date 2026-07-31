@@ -358,15 +358,18 @@ class KimiAudioBackend(_BaseAudioBackend):
 class MockModel:
     """模拟模型，用于测试评估框架。"""
 
-    L1_MAP = {"active": "主动信号", "passive": "被动信号"}
-    L2_MAP = {"pulse": "探测脉冲类", "communication": "通信类", "ship_noise": "舰船辐射噪声"}
+    L1_MAP = {"active": "an actively transmitted signal", "passive": "a passively received signal"}
+    L2_MAP = {"pulse": "Detection pulse", "communication": "Communication signal", "ship_noise": "Ship-radiated noise"}
     L3_MAP = {
-        "CW": "CW连续波", "LFM": "LFM线性调频", "HFM": "HFM双曲调频",
-        "2FSK": "2FSK二进制频移键控", "4FSK": "4FSK四进制频移键控",
-        "BPSK": "BPSK二进制相移键控", "QPSK": "QPSK四进制相移键控",
-        "OFDM": "OFDM正交频分复用",
-        "cargo": "货船", "cruise": "邮轮", "fishing": "渔船",
-        "warship": "军舰", "underwater_target": "水下目标",
+        "CW": "CW (Continuous Wave)", "LFM": "LFM (Linear Frequency Modulation)",
+        "HFM": "HFM (Hyperbolic Frequency Modulation)",
+        "2FSK": "2FSK (Binary Frequency Shift Keying)",
+        "4FSK": "4FSK (Quaternary Frequency Shift Keying)",
+        "BPSK": "BPSK (Binary Phase Shift Keying)",
+        "QPSK": "QPSK (Quadrature Phase Shift Keying)",
+        "OFDM": "OFDM (Orthogonal Frequency Division Multiplexing)",
+        "cargo": "Cargo vessel", "cruise": "Cruise ship", "fishing": "Fishing vessel",
+        "warship": "Naval vessel", "underwater_target": "Underwater target",
     }
     L2_POOLS = {"active": ["pulse", "communication"], "passive": ["ship_noise"]}
     L3_BY_L2 = {
@@ -456,16 +459,16 @@ class MockModel:
 
     def _natural_language_output(self, l1, l2, l3, prompt):
         if self._is_l1_question(prompt):
-            return f"这是{self.L1_MAP[l1]}。"
+            return f"This is {self.L1_MAP[l1]}."
         l2_name = self.L2_MAP[l2]
         l3_name = self.L3_MAP.get(l3, l3)
-        return f"这是{self.L1_MAP[l1]}，属于{l2_name}中的{l3_name}。从时频特征来看，该信号具有典型的{l3_name}声学特征。"
+        return f"This is {self.L1_MAP[l1]}, specifically a {l3_name} ({l2_name}). Based on time-frequency analysis, the signal exhibits characteristic {l3_name} acoustic features."
 
     @staticmethod
     def _is_l1_question(prompt):
-        has_active = "主动" in prompt or "发射" in prompt
-        has_passive = "被动" in prompt or "接收" in prompt
-        has_detail = "具体" in prompt or "子类" in prompt or "完整" in prompt or "细化" in prompt
+        has_active = any(w in prompt.lower() for w in ["active", "transmitted", "transmission"])
+        has_passive = any(w in prompt.lower() for w in ["passive", "received", "listening"])
+        has_detail = any(w in prompt.lower() for w in ["specific", "subcategory", "further", "which type", "exact"])
         return has_active and has_passive and not has_detail
 
     def _pick_answer(self, audio_path):

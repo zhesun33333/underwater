@@ -83,7 +83,7 @@ def _find_meta(audio_base: Path, audio_rel: str, sample_id: str) -> dict:
 
 def _extract_snr(meta: dict) -> float:
     bo = meta.get("bellhop_output", {})
-    return bo.get("snr_after_channel_db")
+    return bo.get("snr_db") or bo.get("tl_db")
 
 
 def _extract_ssp_complexity(meta: dict) -> float:

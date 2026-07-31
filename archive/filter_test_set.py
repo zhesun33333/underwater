@@ -18,12 +18,13 @@ from typing import Optional
 
 PROCESSED_ROOT = Path("processed_audio")
 
-# L3 类别的友好名称
+# L3 class display names
 L3_NAMES = {
-    "CW": "CW连续波", "LFM": "LFM线性调频", "HFM": "HFM双曲调频",
+    "CW": "CW (Continuous Wave)", "LFM": "LFM (Linear Frequency Modulation)",
+    "HFM": "HFM (Hyperbolic Frequency Modulation)",
     "2FSK": "2FSK", "4FSK": "4FSK", "BPSK": "BPSK", "QPSK": "QPSK", "OFDM": "OFDM",
-    "cargo": "货船", "cruise": "邮轮", "fishing": "渔船",
-    "warship": "军舰", "underwater_target": "水下目标",
+    "cargo": "Cargo vessel", "cruise": "Cruise ship", "fishing": "Fishing vessel",
+    "warship": "Naval vessel", "underwater_target": "Underwater target",
 }
 
 
@@ -55,8 +56,8 @@ def find_meta(audio_base: Path, audio_rel: str, sample_id: str) -> Optional[dict
 
 def extract_quality_and_gt(meta: dict) -> tuple:
     """返回 (category, l3_key, quality_score, gt_dict, meta_dict)。
-    PulseCom: quality = TL
-    Ship:     quality = SNR
+    PulseCom: quality = TL (传播损失, dB), 越大信号越清晰
+    Ship:     quality = SNR (线谱/背景比, dB), 越大特征越明显
     gt_dict 跟 testsite extract_l1_l2_l3_from_meta 返回格式一致
     """
     cat = meta.get("signal_category", "unknown")
@@ -64,15 +65,18 @@ def extract_quality_and_gt(meta: dict) -> tuple:
     be = meta.get("bellhop_env", {})
     ssp = be.get("ssp", {})
 
-    # --- 提取 SNR / TL ---
+    meta_out = {}
+
     if cat in ("pulse", "communication"):
-        tl = bo.get("estimated_transmission_loss_db")
+        tl = bo.get("tl_db")
         l3 = str(meta.get("signal_type", "unknown")).upper()
         quality = float(tl) if tl is not None else -400.0
+        if tl is not None:
+            meta_out["tl_db"] = float(tl)
         gt = {"L1": "active", "L2": "pulse" if cat == "pulse" else "communication", "L3": l3}
 
     elif cat == "radiated_noise":
-        snr = bo.get("snr_after_channel_db")
+        snr = bo.get("snr_db")
         sub = meta.get("sub_type", "unknown")
         ship_l3_map = {
             "cargo": "cargo", "cruise": "cruise", "fishing": "fishing",
@@ -80,17 +84,14 @@ def extract_quality_and_gt(meta: dict) -> tuple:
         }
         l3 = ship_l3_map.get(sub, "unknown")
         quality = float(snr) if snr is not None else -400.0
+        if snr is not None:
+            meta_out["snr_db"] = float(snr)
         gt = {"L1": "passive", "L2": "ship_noise", "L3": l3}
 
     else:
         return ("unknown", "unknown", -400.0, {"L1": "unknown", "L2": "unknown", "L3": "unknown"}, {})
 
-    # --- 提取质量元数据 (用于 SNR/SSP 分层分析) ---
-    snr_val = bo.get("snr_after_channel_db")
-    meta_out = {}
-    if snr_val is not None:
-        meta_out["snr_db"] = float(snr_val)
-
+    # SSP complexity (for both categories)
     depths = ssp.get("depths_m")
     speeds = ssp.get("sound_speeds_mps")
     if depths and speeds and len(depths) > 1:
@@ -147,7 +148,11 @@ def main():
                 skipped_no_meta += 1
                 continue
 
-            cat, l3, quality, gt, meta_out = extract_quality_and_gt(meta)
+            try:
+                cat, l3, quality, gt, meta_out = extract_quality_and_gt(meta)
+            except (ValueError, ZeroDivisionError, TypeError) as e:
+                skipped_no_meta += 1
+                continue
             if l3 == "unknown" or gt.get("L1") == "unknown":
                 skipped_no_meta += 1
                 continue

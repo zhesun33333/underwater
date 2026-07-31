@@ -1,11 +1,11 @@
 """
-水声大模型数据合成管线 — 第二步：QA 对生成 (PulseCom 专用)
-生成三轮对话 SFT 数据:
-  Turn 1: 主动/被动判别 → 短答案
-  Turn 2: 子类 + 具体类型 → 长答案
-  Turn 3: 判断依据 → 定性推理文本
-支持 train/val/test 分裂 (70/15/15, 统一三轮格式)
-用法:
+Underwater acoustic LLM data synthesis — Step 2: QA pair generation (PulseCom)
+Generates 3-turn SFT data:
+  Turn 1: Active/passive discrimination → short answer
+  Turn 2: Subcategory + specific type → long answer
+  Turn 3: Reasoning rationale → qualitative reasoning text
+Supports train/val/test split (70/15/15, unified 3-turn format)
+Usage:
   python pipeline_step2_qa.py [--config config.yaml]
 """
 import argparse
@@ -23,55 +23,65 @@ from utils.json_parser import (
 # ============================================================
 # 模板定义
 # ============================================================
-# Turn 1 问题模板 — 主动/被动判别
+# Turn 1 — Active/passive discrimination
 T1_TEMPLATES = [
-    "请判断这段水声信号是主动发射的还是被动接收的。\n选项：\nA. 主动信号\nB. 被动信号",
-    "这段音频中的信号是主动声纳发出的，还是被动监听到的？\n选项：\nA. 主动信号\nB. 被动信号",
-    "先判断最基本的问题：这信号是主动式的还是被动式的？\n选项：\nA. 主动信号\nB. 被动信号",
-    "请先区分这段水下声信号的主动/被动属性。\n选项：\nA. 主动信号\nB. 被动信号",
-    "第一个问题：这个声信号是人为主动发射的，还是目标自身辐射的？\n选项：\nA. 主动信号\nB. 被动信号",
-    "从主动探测和被动监听的角度，这段信号属于哪一类？\n选项：\nA. 主动信号\nB. 被动信号",
-    "请判断信号来源——是主动声纳系统发射的，还是被动接收到的辐射噪声？\n选项：\nA. 主动信号\nB. 被动信号",
-    "先做一个基本判断：该水声信号是主动信号还是被动信号？\n选项：\nA. 主动信号\nB. 被动信号",
+    "Determine whether this underwater acoustic signal is actively transmitted or passively received.\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "Is the signal in this audio deliberately transmitted, or received through passive listening?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "First, the most basic question: is this signal active or passive?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "Classify the active/passive nature of this underwater acoustic signal.\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "Is this acoustic signal artificially transmitted, or radiated by the target itself?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "From an active detection vs. passive listening perspective, which category does this signal belong to?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "Identify the signal source: deliberately transmitted, or radiated noise received passively?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "Make a fundamental judgment: is this underwater acoustic signal active or passive?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
 ]
-# Turn 2 问题模板 — 子类 + 具体类型 (Q2 嵌入 T1 已确认的 L1)
+# Turn 2 — Subcategory + specific type (with T1-confirmed L1 embedded)
+_T2_OPTIONS = (
+    "A. Active — Detection pulse — CW (Continuous Wave)\n"
+    "B. Active — Detection pulse — LFM (Linear Frequency Modulation)\n"
+    "C. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)\n"
+    "D. Active — Communication — 2FSK (Binary Frequency Shift Keying)\n"
+    "E. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)\n"
+    "F. Active — Communication — BPSK (Binary Phase Shift Keying)\n"
+    "G. Active — Communication — QPSK (Quadrature Phase Shift Keying)\n"
+    "H. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)"
+)
 T2_TEMPLATES = [
-    "好的，{L1}。请进一步判断它是探测脉冲类还是通信类，给出具体类型。\n选项：\nA. 主动信号-探测脉冲类-CW连续波\nB. 主动信号-探测脉冲类-LFM线性调频\nC. 主动信号-探测脉冲类-HFM双曲调频\nD. 主动信号-通信类-2FSK\nE. 主动信号-通信类-4FSK\nF. 主动信号-通信类-BPSK\nG. 主动信号-通信类-QPSK\nH. 主动信号-通信类-OFDM",
-    "明白了，{L1}。接下来识别它属于哪个子类。\n选项：\nA. 主动信号-探测脉冲类-CW连续波\nB. 主动信号-探测脉冲类-LFM线性调频\nC. 主动信号-探测脉冲类-HFM双曲调频\nD. 主动信号-通信类-2FSK\nE. 主动信号-通信类-4FSK\nF. 主动信号-通信类-BPSK\nG. 主动信号-通信类-QPSK\nH. 主动信号-通信类-OFDM",
-    "{L1}。那它的具体信号类型是什么？\n选项：\nA. 主动信号-探测脉冲类-CW连续波\nB. 主动信号-探测脉冲类-LFM线性调频\nC. 主动信号-探测脉冲类-HFM双曲调频\nD. 主动信号-通信类-2FSK\nE. 主动信号-通信类-4FSK\nF. 主动信号-通信类-BPSK\nG. 主动信号-通信类-QPSK\nH. 主动信号-通信类-OFDM",
-    "收到，{L1}。现在需要更细的分类：是探测脉冲类还是通信类？具体叫什么？\n选项：\nA. 主动信号-探测脉冲类-CW连续波\nB. 主动信号-探测脉冲类-LFM线性调频\nC. 主动信号-探测脉冲类-HFM双曲调频\nD. 主动信号-通信类-2FSK\nE. 主动信号-通信类-4FSK\nF. 主动信号-通信类-BPSK\nG. 主动信号-通信类-QPSK\nH. 主动信号-通信类-OFDM",
-    "好，{L1}已经确定。下一步：识别信号的具体类型。\n选项：\nA. 主动信号-探测脉冲类-CW连续波\nB. 主动信号-探测脉冲类-LFM线性调频\nC. 主动信号-探测脉冲类-HFM双曲调频\nD. 主动信号-通信类-2FSK\nE. 主动信号-通信类-4FSK\nF. 主动信号-通信类-BPSK\nG. 主动信号-通信类-QPSK\nH. 主动信号-通信类-OFDM",
-    "确认是{L1}。那么它属于主动声纳中的哪种具体信号？\n选项：\nA. 主动信号-探测脉冲类-CW连续波\nB. 主动信号-探测脉冲类-LFM线性调频\nC. 主动信号-探测脉冲类-HFM双曲调频\nD. 主动信号-通信类-2FSK\nE. 主动信号-通信类-4FSK\nF. 主动信号-通信类-BPSK\nG. 主动信号-通信类-QPSK\nH. 主动信号-通信类-OFDM",
-    "第一步完成。现在请对{L1}做进一步细分。\n选项：\nA. 主动信号-探测脉冲类-CW连续波\nB. 主动信号-探测脉冲类-LFM线性调频\nC. 主动信号-探测脉冲类-HFM双曲调频\nD. 主动信号-通信类-2FSK\nE. 主动信号-通信类-4FSK\nF. 主动信号-通信类-BPSK\nG. 主动信号-通信类-QPSK\nH. 主动信号-通信类-OFDM",
-    "那么在这个{L1}大类下，它具体是哪一种信号？\n选项：\nA. 主动信号-探测脉冲类-CW连续波\nB. 主动信号-探测脉冲类-LFM线性调频\nC. 主动信号-探测脉冲类-HFM双曲调频\nD. 主动信号-通信类-2FSK\nE. 主动信号-通信类-4FSK\nF. 主动信号-通信类-BPSK\nG. 主动信号-通信类-QPSK\nH. 主动信号-通信类-OFDM",
+    f"Good — the signal is {{L1}}. Now determine whether it is a detection pulse or communication signal, and specify the exact type.\nOptions:\n{_T2_OPTIONS}",
+    f"Understood — it is {{L1}}. Now identify which subcategory it belongs to.\nOptions:\n{_T2_OPTIONS}",
+    f"Signal is {{L1}}. What is its specific signal type?\nOptions:\n{_T2_OPTIONS}",
+    f"Got it — {{L1}}. Now a finer classification: is it a detection pulse or communication signal? Which specific type?\nOptions:\n{_T2_OPTIONS}",
+    f"OK, {{L1}} confirmed. Next step: identify the specific signal type.\nOptions:\n{_T2_OPTIONS}",
+    f"Confirmed as {{L1}}. Which specific signal type is it?\nOptions:\n{_T2_OPTIONS}",
+    f"First step complete. Now further classify this {{L1}} signal.\nOptions:\n{_T2_OPTIONS}",
+    f"Within the {{L1}} category, which specific signal type is it?\nOptions:\n{_T2_OPTIONS}",
 ]
-# Turn 3 — 要求说明判断依据
-T3_PROMPT = "请简要说明你的判断依据。"
+# Turn 3 — Reasoning
+T3_PROMPT = "Please briefly explain your reasoning."
 # ============================================================
 # 答案生成 — 选项字母格式 (方案 A)
 # ============================================================
 
 # L3 key → T2 完整选项文本 (PulseCom active, 8 选 1)
 _T2_ACTIVE_FULL = {
-    "CW": "A. 主动信号-探测脉冲类-CW连续波",
-    "LFM": "B. 主动信号-探测脉冲类-LFM线性调频",
-    "HFM": "C. 主动信号-探测脉冲类-HFM双曲调频",
-    "2FSK": "D. 主动信号-通信类-2FSK",
-    "4FSK": "E. 主动信号-通信类-4FSK",
-    "BPSK": "F. 主动信号-通信类-BPSK",
-    "QPSK": "G. 主动信号-通信类-QPSK",
-    "OFDM": "H. 主动信号-通信类-OFDM",
+    "CW": "A. Active — Detection pulse — CW (Continuous Wave)",
+    "LFM": "B. Active — Detection pulse — LFM (Linear Frequency Modulation)",
+    "HFM": "C. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)",
+    "2FSK": "D. Active — Communication — 2FSK (Binary Frequency Shift Keying)",
+    "4FSK": "E. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)",
+    "BPSK": "F. Active — Communication — BPSK (Binary Phase Shift Keying)",
+    "QPSK": "G. Active — Communication — QPSK (Quadrature Phase Shift Keying)",
+    "OFDM": "H. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)",
 }
 
 def get_t1_answer(l1: str) -> str:
     """Turn 1 答案: 完整选项文本。"""
-    return "A. 主动信号" if l1 == "主动信号" else "B. 被动信号"
+    return "A. Actively transmitted signal" if l1 == "actively transmitted" else "B. Passively received signal"
 
 
 def build_turn2_answer(labels: Dict[str, str]) -> str:
     """Turn 2 答案: 完整选项文本 (A-H)。"""
     l3 = labels["L3"]
-    return _T2_ACTIVE_FULL.get(l3, "A. 主动信号-探测脉冲类-CW连续波")
+    return _T2_ACTIVE_FULL.get(l3, "A. Active — Detection pulse — CW (Continuous Wave)")
 
 
 def build_turn3_answer(labels: Dict[str, str]) -> str:
@@ -81,52 +91,22 @@ def build_turn3_answer(labels: Dict[str, str]) -> str:
 
 # ============================================================
 # T3 结构化推理模板
-# 格式: L1描述术语 + L2特征术语 + L3区分性术语
-# 评估时可逐层提取术语做对齐检查
+# L1/L2/L3 术语从 shared_terminology.py 统一导入 (single source of truth)
 # ============================================================
-
-# L1 级描述术语
-_L1_ACTIVE_TERMS  = ["主动发射信号", "主动声纳信号", "人为主动发射信号"]
-_L1_PASSIVE_TERMS = ["被动接收信号", "被动监听信号", "目标自身辐射信号"]
-
-# L2 级特征术语 (按 L1 分组)
-_L2_ACTIVE_TERMS = {
-    "探测脉冲类": ["探测脉冲特征", "脉冲探测模式", "声纳探测脉冲特性"],
-    "通信类":     ["水声通信特征", "数字通信调制", "通信信号调制模式"],
-}
-_L2_PASSIVE_TERMS = {
-    "舰船辐射噪声": ["舰船辐射噪声特征", "船舶辐射噪声特性", "目标辐射噪声模式"],
-}
-
-# L3 级区分性术语 (每类随机选 2-3 个)
-# 与 testsite/core/scorer.py 的 _L3_SHOULD 保持同步
-_L3_TERMS = {
-    "CW":  ["单频", "连续波", "音调不变", "单音调", "频率集中"],
-    "LFM": ["线性调频", "线性扫频", "音调线性", "频率滑移", "频带展宽",
-            "由低变高", "由高变低"],
-    "HFM": ["双曲调频", "双曲扫频", "非线性", "先急后缓", "先快后慢"],
-    "2FSK": ["两个音调", "二元调制", "频移键控", "频率跳变", "音调切换"],
-    "4FSK": ["四个音调", "四进制", "频移键控", "频率跳变", "多音调交替"],
-    "BPSK": ["相位翻转", "相移键控", "二进制", "两个状态", "顿挫感", "音量稳定"],
-    "QPSK": ["相移键控", "四个状态", "四进制", "多状态切换", "响度恒定"],
-    "OFDM": ["子载波", "多载波", "正交", "频分复用", "并行传输", "密集子载波"],
-    "cargo":   ["谐波结构清晰", "轴频", "轴频节律", "低速大型", "大型商船",
-                "规律节律", "谐音丰富"],
-    "cruise":  ["机械噪声密集", "密集机械", "高速", "多机组", "宽带噪声",
-                "中高频段", "客船特征"],
-    "fishing": ["小型", "结构简单", "稀疏谐音", "柴油机", "音量较小",
-                "低次谐音", "谐音有限"],
-    "warship": ["强劲", "大功率", "军用舰船", "多轴推进", "多组谐波",
-                "复杂密集", "能量集中低频"],
-    "underwater_target": ["水下目标", "平滑均匀", "音量低", "宽带为主",
-                          "谐音稀少", "缺乏节律"],
-}
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from shared_terminology import (
+    L1_ACTIVE_TERMS  as _L1_ACTIVE_TERMS,
+    L1_PASSIVE_TERMS as _L1_PASSIVE_TERMS,
+    L2_ACTIVE_TERMS  as _L2_ACTIVE_TERMS,
+    L2_PASSIVE_TERMS as _L2_PASSIVE_TERMS,
+    L3_PRECISE       as _L3_TERMS,
+)
 
 # T3 句式模板 (3 种变体)
 _T3_TEMPLATES = [
-    "该信号为{L1}，具有{L2}，具体表现为{L3}。",
-    "从声学特征判断，属于{L1}，{L2}明显，{L3}是其典型标志。",
-    "音频分析表明为{L1}，听感上{L2}突出，{L3}。",
+    "The signal is {L1}, exhibiting {L2}, characterized by {L3}.",
+    "Based on acoustic features, the signal is {L1}; {L2} features are prominent; {L3} is a distinguishing indicator.",
+    "Audio analysis indicates the signal is {L1}; aurally, {L2} dominates, with {L3}.",
 ]
 
 
@@ -138,18 +118,18 @@ def _build_reasoning(l3: str) -> str:
 
     # 选 2-3 个 L3 术语
     k = random.randint(2, min(3, len(terms)))
-    l3_text = "、".join(random.sample(terms, k))
+    l3_text = ", ".join(random.sample(terms, k))
 
     # L1 和 L2 由 L3 推导
     if l3 in ("CW", "LFM", "HFM"):
         l1_text = random.choice(_L1_ACTIVE_TERMS)
-        l2_text = random.choice(_L2_ACTIVE_TERMS["探测脉冲类"])
+        l2_text = random.choice(_L2_ACTIVE_TERMS["detection pulse"])
     elif l3 in ("2FSK", "4FSK", "BPSK", "QPSK", "OFDM"):
         l1_text = random.choice(_L1_ACTIVE_TERMS)
-        l2_text = random.choice(_L2_ACTIVE_TERMS["通信类"])
+        l2_text = random.choice(_L2_ACTIVE_TERMS["communication signal"])
     else:
         l1_text = random.choice(_L1_PASSIVE_TERMS)
-        l2_text = random.choice(_L2_PASSIVE_TERMS["舰船辐射噪声"])
+        l2_text = random.choice(_L2_PASSIVE_TERMS["ship-radiated noise"])
 
     template = random.choice(_T3_TEMPLATES)
     return template.replace("{L1}", l1_text).replace("{L2}", l2_text).replace("{L3}", l3_text)
@@ -192,7 +172,7 @@ def process_single_json(
     except Exception:
         return None
     labels = extract_labels(meta)
-    if labels["L1"] == "未知":
+    if labels["L1"] == "unknown":
         return None
     wav_rel = get_wav_path(meta)
     sample_id = get_id(meta)

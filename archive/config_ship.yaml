@@ -26,9 +26,7 @@ dataset:
     - warship
     - underwater_target
 
-  # 三级分类标签
-  category_mapping:
-    radiated_noise: { L1: "被动信号", L2: "舰船辐射噪声" }
+  # L1/L2/L3 映射由 utils/json_parser.py extract_labels() 统一处理
 
 # ---- BELLHOP 信道参数 ----
 channel:
@@ -38,6 +36,7 @@ channel:
   use_json_geometry: true
   geometry_jitter_pct: 0.1
   max_arrivals: 20
+  output_norm_peak: 0.95                       # 卷积后音频峰值归一化目标 (0<值≤1)
   bottom:
     type: "silt"
     sound_speed_mps: 1520

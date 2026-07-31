@@ -33,8 +33,8 @@ for p in (PROCESSED_ROOT / "PulseCom" / "jsonc" / "HFM").glob("*.jsonc"):
 
 for label, jp in samples_to_check:
     meta = json.loads(jp.read_text(encoding="utf-8"))
-    snr_stored = meta.get("bellhop_output", {}).get("snr_after_channel_db")
-    tl_stored = meta.get("bellhop_output", {}).get("estimated_transmission_loss_db")
+    snr_stored = meta.get("bellhop_output", {}).get("snr_db")
+    tl_stored = meta.get("bellhop_output", {}).get("tl_db")
     signal_dur = meta.get("signal_duration_s")
     audio_dur = meta.get("audio_duration_s")
     cat = meta.get("signal_category")

@@ -18,11 +18,7 @@ datasets:
     json_dir: "jsonc"                           # 相对于 PulseCom/
     wav_dir: "wav_by_type"
     json_ext: ".jsonc"                          # 含 // 和 /* */ 注释
-    # 信号类别到三级的映射 (从 JSON 字段推断)
-    category_mapping:
-      pulse:       { L1: "主动信号", L2: "探测脉冲类" }
-      communication: { L1: "主动信号", L2: "通信类" }
-    # L3 直接取 signal_type 字段
+    # L1/L2/L3 映射由 utils/json_parser.py extract_labels() 统一处理
 
 
 # ---- BELLHOP 信道参数 ----
@@ -33,6 +29,7 @@ channel:
   use_json_geometry: true                       # 优先使用 JSON 中的几何参数
   geometry_jitter_pct: 0.1                      # 在 JSON 几何参数上添加 ±10% 抖动
   max_arrivals: 20                              # 保留的到达条数上限
+  output_norm_peak: 0.95                       # 卷积后音频峰值归一化目标 (0<值≤1)
   bottom:
     type: "silt"
     sound_speed_mps: 1520

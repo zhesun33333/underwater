@@ -49,8 +49,8 @@ def main():
         except Exception:
             return None
         bo = meta.get("bellhop_output", {})
-        snr = bo.get("snr_after_channel_db")
-        tl = bo.get("estimated_transmission_loss_db")
+        snr = bo.get("snr_db")
+        tl = bo.get("tl_db")
         arrivals = bo.get("summary", {}).get("num_arrivals", 0)
         snr_orig = meta.get("snr_after_mix_db")  # ship 原始 SNR
         signal_cat = meta.get("signal_category", "unknown")

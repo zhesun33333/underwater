@@ -31,27 +31,34 @@ L3_DISPLAY = {
     "CW": "CW", "LFM": "LFM", "HFM": "HFM",
     "2FSK": "2FSK", "4FSK": "4FSK", "BPSK": "BPSK",
     "QPSK": "QPSK", "OFDM": "OFDM",
-    "cargo": "Cargo", "cruise": "Cruise", "fishing": "Fishing",
-    "warship": "Warship", "underwater_target": "Underwater",
+    "cargo": "Cargo vessel", "cruise": "Cruise ship", "fishing": "Fishing vessel",
+    "warship": "Naval vessel", "underwater_target": "Underwater target",
 }
 
-# Map full Chinese names -> short keys (for per_class dict keys from scorer)
-_CN_TO_SHORT = {
-    "CW连续波": "CW", "LFM线性调频": "LFM", "HFM双曲调频": "HFM",
-    "2FSK二进制频移键控": "2FSK", "4FSK四进制频移键控": "4FSK",
-    "BPSK二进制相移键控": "BPSK", "QPSK四进制相移键控": "QPSK",
-    "OFDM正交频分复用": "OFDM",
-    "货船": "cargo", "邮轮": "cruise", "渔船": "fishing",
-    "军舰": "warship", "水下目标": "underwater_target",
+# Map full English names -> short keys (for per_class dict keys from scorer)
+_EN_TO_SHORT = {
+    "CW (Continuous Wave)": "CW",
+    "LFM (Linear Frequency Modulation)": "LFM",
+    "HFM (Hyperbolic Frequency Modulation)": "HFM",
+    "2FSK (Binary Frequency Shift Keying)": "2FSK",
+    "4FSK (Quaternary Frequency Shift Keying)": "4FSK",
+    "BPSK (Binary Phase Shift Keying)": "BPSK",
+    "QPSK (Quadrature Phase Shift Keying)": "QPSK",
+    "OFDM (Orthogonal Frequency Division Multiplexing)": "OFDM",
+    "Cargo vessel": "cargo",
+    "Cruise ship": "cruise",
+    "Fishing vessel": "fishing",
+    "Naval vessel": "warship",
+    "Underwater target": "underwater_target",
 }
 
 
 def _match_l3_key(name: str) -> str | None:
-    """Match a per_class key (Chinese or short) to L3 short key."""
+    """Match a per_class key (full English name or short key) to L3 short key."""
     if name in L3_SHORT["pulse"] + L3_SHORT["communication"] + L3_SHORT["ship_noise"]:
         return name
-    if name in _CN_TO_SHORT:
-        return _CN_TO_SHORT[name]
+    if name in _EN_TO_SHORT:
+        return _EN_TO_SHORT[name]
     # substring fallback: check if any short key appears in the name
     name_lower = name.lower()
     for sk in L3_SHORT["pulse"] + L3_SHORT["communication"] + L3_SHORT["ship_noise"]:

@@ -68,41 +68,43 @@ def extract_labels(meta: dict) -> Dict[str, str]:
 
     PulseCom: L1/L2 由 signal_category 映射, L3 = signal_type
     Ship:     L1/L2 由 signal_category 映射, L3 = sub_type
+
+    L1 返回形容词形式 (active/passive) 以便在 prompt 模板中灵活使用。
     """
     signal_category = meta.get("signal_category", "unknown")
     signal_type = meta.get("signal_type", "unknown")
     sub_type = meta.get("sub_type")
 
     if signal_category in ("pulse", "communication"):
-        l1 = "主动信号"
-        l2 = "探测脉冲类" if signal_category == "pulse" else "通信类"
+        l1 = "actively transmitted"
+        l2 = "detection pulse" if signal_category == "pulse" else "communication signal"
     elif signal_category == "radiated_noise":
-        l1 = "被动信号"
-        l2 = "舰船辐射噪声"
+        l1 = "passively received"
+        l2 = "ship-radiated noise"
     else:
-        l1 = "未知"
-        l2 = "未知"
+        l1 = "unknown"
+        l2 = "unknown"
 
     l3 = sub_type or signal_type
 
-    l3_cn_map = {
-        "CW": "CW（连续波）",
-        "LFM": "LFM（线性调频）",
-        "HFM": "HFM（双曲调频）",
-        "2FSK": "2FSK（二进制频移键控）",
-        "4FSK": "4FSK（四进制频移键控）",
-        "BPSK": "BPSK（二进制相移键控）",
-        "QPSK": "QPSK（四进制相移键控）",
-        "OFDM": "OFDM（正交频分复用）",
-        "cargo": "货船",
-        "cruise": "邮轮",
-        "fishing": "渔船",
-        "warship": "军舰",
-        "underwater_target": "水下目标",
+    l3_display_map = {
+        "CW": "CW (Continuous Wave)",
+        "LFM": "LFM (Linear Frequency Modulation)",
+        "HFM": "HFM (Hyperbolic Frequency Modulation)",
+        "2FSK": "2FSK (Binary Frequency Shift Keying)",
+        "4FSK": "4FSK (Quaternary Frequency Shift Keying)",
+        "BPSK": "BPSK (Binary Phase Shift Keying)",
+        "QPSK": "QPSK (Quadrature Phase Shift Keying)",
+        "OFDM": "OFDM (Orthogonal Frequency Division Multiplexing)",
+        "cargo": "Cargo vessel",
+        "cruise": "Cruise ship",
+        "fishing": "Fishing vessel",
+        "warship": "Naval vessel",
+        "underwater_target": "Underwater target",
     }
-    l3_cn = l3_cn_map.get(l3, l3)
+    l3_display = l3_display_map.get(l3, l3)
 
-    return {"L1": l1, "L2": l2, "L3": l3, "L3_CN": l3_cn}
+    return {"L1": l1, "L2": l2, "L3": l3, "L3_display": l3_display}
 
 
 def _normalize_water_depth(val) -> Optional[float]:

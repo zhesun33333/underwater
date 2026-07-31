@@ -138,7 +138,7 @@ def compute_post_channel_snr_ship(meta: dict) -> float:
     LTI 系统下宽带 SNR 近似不变:
       SNR_post ≈ SNR_orig = snr_after_mix_db
 
-    衰减程度看 bellhop_output.estimated_transmission_loss_db，
+    # SNR 不变，衰减程度看 actual TL (宽带 TL 仅做参考)
     若 TL 过大（如 < -60 dB），说明信号绝对电平已极低。
     """
     orig_snr = meta.get("snr_after_mix_db")
@@ -309,10 +309,22 @@ def _apply_one_ship_channel(
     # --- 卷积 ---
     convolved = apply_channel(audio, cir)
 
-    # --- RMS 传播损失 (比峰值比稳定，反映信道能量增益) ---
+    # --- RMS 传播损失 (归一化前计算，反映信道真实能量增益) ---
     rms_orig = np.sqrt(max(1e-20, np.mean(audio ** 2)))
     rms_conv = np.sqrt(max(1e-20, np.mean(convolved ** 2)))
     tl_est = 20.0 * np.log10(rms_conv / rms_orig)
+
+    # --- 输出峰值归一化 ---
+    # CIR 多频叠加后 peak 归一化无法保证卷积输出音量一致；
+    # 此处对卷积结果做 peak 归一化，确保所有样本输出电平统一，
+    # 同时保留信道的频率选择性（频谱形状不变、SNR 不变）。
+    peak = float(np.max(np.abs(convolved)))
+    target_peak = float(channel_cfg.get("output_norm_peak", 0.95))
+    if peak > 1e-10:
+        convolved *= (target_peak / peak)
+        gain_db = round(20.0 * float(np.log10(target_peak / peak)), 2)
+    else:
+        gain_db = 0.0
 
     # --- 后处理 SNR ---
     snr_post = compute_post_channel_snr_ship(meta)
@@ -344,8 +356,8 @@ def _apply_one_ship_channel(
         "mode": "broadband",
         "num_freqs": len(ship_freqs),
         "freqs_hz": ship_freqs,
-        "estimated_transmission_loss_db": round(tl_est, 2),
-        "snr_after_channel_db": snr_post,
+        "snr_db": snr_post,
+        "output_normalization_gain_db": gain_db,
         "cir_duration_s": audio_duration_s,
         "cir_fs_hz": fs,
     }
@@ -364,7 +376,7 @@ def _apply_one_ship_channel(
         "id": new_id,
         "wav": str(output_wav_path),
         "json": str(output_json_path),
-        "tl_db": round(tl_est, 2),
+        "snr_db": snr_post,
         "ssp_index": ssp_info["profile_index"],
         "freqs": ship_freqs,
     }

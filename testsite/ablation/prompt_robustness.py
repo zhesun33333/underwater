@@ -60,7 +60,7 @@ class PromptRobustnessEvaluator:
             if pred1.L1 == "unknown":
                 continue
 
-            l1_label = "主动信号" if pred1.L1 == "active" else "被动信号"
+            l1_label = "actively transmitted" if pred1.L1 == "active" else "passively received"
             t2_pool = t2_active if pred1.L1 == "active" else t2_passive
 
             l2_votes: Dict[str, int] = {}

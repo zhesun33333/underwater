@@ -110,77 +110,6 @@ def write_audio(wav_path: Path, sr: int, data: np.ndarray, bits: int = 32):
     wavfile.write(wav_path, sr, int_data)
 
 
-# ---- 后处理 SNR 计算 ----
-
-def compute_post_channel_snr(
-    audio_orig: np.ndarray,
-    audio_conv: np.ndarray,
-    meta: dict,
-    fs: int,
-) -> float:
-    """
-    PulseCom: 匹配滤波器 SNR。
-
-    1. 在原音频上定位脉冲（干净模板），截取 signal_duration_s 长度
-    2. 用该模板与卷积音频做互相关（匹配滤波），找到最佳匹配位置
-    3. 在匹配位置取 signal_duration_s × 1.5 窗口作为信号区
-    4. SNR = 20·log₁₀(RMS_signal / RMS_noise)
-
-    这模拟了实际声纳对已知波形的检测过程，是最合理的 SNR 定义。
-    """
-    from scipy.signal import correlate
-
-    signal_dur = float(meta.get("signal_duration_s") or meta.get("audio_duration_s", 30))
-    total_dur = len(audio_orig) / fs
-
-    # 信号几乎占满音频 → 无法时间门控，用电平推算法
-    if signal_dur >= total_dur * 0.85:
-        rms_orig = np.sqrt(max(1e-20, np.mean(audio_orig ** 2)))
-        rms_conv = np.sqrt(max(1e-20, np.mean(audio_conv ** 2)))
-        orig_snr = float(meta.get("snr_after_mix_db") or 0)
-        return round(orig_snr + 20.0 * np.log10(rms_conv / rms_orig), 2)
-
-    # 1. 在原音频上找脉冲位置（干净无噪）
-    sig_samples_orig = int(signal_dur * fs)
-    step = max(1, sig_samples_orig // 4)
-    best_start = 0
-    best_energy = 0.0
-    for start in range(0, len(audio_orig) - sig_samples_orig + 1, step):
-        energy = float(np.sum(audio_orig[start:start + sig_samples_orig] ** 2))
-        if energy > best_energy:
-            best_energy = energy
-            best_start = start
-
-    template = audio_orig[best_start:best_start + sig_samples_orig]
-
-    # 2. 匹配滤波：模板与卷积音频互相关
-    correlation = correlate(audio_conv, template, mode='valid')
-    best_start_conv = int(np.argmax(np.abs(correlation)))
-
-    # 匹配滤波器输出峰值的平均功率，作为 "信号功率" 的稳健估计
-    peak_region = max(0, best_start_conv - sig_samples_orig // 2)
-    sig_window_len = int(signal_dur * fs * 1.5)  # 50% margin 补偿多径扩散
-    sig_window_len = min(sig_window_len, len(audio_conv) - peak_region)
-    sig_seg = audio_conv[peak_region:peak_region + sig_window_len]
-    rms_signal = np.sqrt(max(1e-20, np.mean(sig_seg ** 2)))
-
-    # 3. 噪声区 = 排除信号窗口及其前后保护带
-    guard = int(0.1 * fs)  # 100ms 保护带
-    noise_start = peak_region + sig_window_len + guard
-    if noise_start < len(audio_conv) - int(0.5 * fs):
-        noise = audio_conv[noise_start:]
-    else:
-        # 信号在末尾，取开头作为噪声区
-        noise_end = max(0, peak_region - guard)
-        noise = audio_conv[:noise_end] if noise_end > int(0.5 * fs) else audio_conv[:int(0.5 * fs)]
-
-    rms_noise = np.sqrt(max(1e-20, np.mean(noise ** 2)))
-
-    if rms_noise > 1e-20 and rms_signal > 1e-20:
-        return round(20.0 * np.log10(rms_signal / rms_noise), 2)
-    return 400.0
-
-
 # ---- BELLHOP 结果摘要 ----
 
 def summarize_arrivals(arrivals: List[Dict]) -> dict:
@@ -371,18 +300,24 @@ def _apply_one_channel(
         bottom=bottom,
         title=f"{sample_id}_ch{ch_idx}",
     )
-    cir = build_cir(arrivals, fs, audio_duration_s)
+    cir = build_cir(arrivals, fs, audio_duration_s, use_normalized=False)
 
     # --- 卷积 ---
     convolved = apply_channel(audio, cir)
 
-    # --- RMS 传播损失 (比峰值比稳定，反映信道能量增益) ---
+    # --- RMS 传播损失 (归一化前计算，反映信道真实能量增益) ---
     rms_orig = np.sqrt(max(1e-20, np.mean(audio ** 2)))
     rms_conv = np.sqrt(max(1e-20, np.mean(convolved ** 2)))
     tl_est = 20.0 * np.log10(rms_conv / rms_orig)
 
-    # --- 计算后处理 SNR ---
-    snr_post = compute_post_channel_snr(audio, convolved, meta, fs)
+    # --- 输出峰值归一化 ---
+    peak = float(np.max(np.abs(convolved)))
+    target_peak = float(channel_cfg.get("output_norm_peak", 0.95))
+    if peak > 1e-10:
+        convolved *= (target_peak / peak)
+        gain_db = round(20.0 * float(np.log10(target_peak / peak)), 2)
+    else:
+        gain_db = 0.0
 
     # --- 更新元数据 ---
     new_meta = dict(meta)
@@ -409,8 +344,8 @@ def _apply_one_channel(
     new_meta["bellhop_output"] = {
         "arrivals": arrivals,
         "summary": summarize_arrivals(arrivals),
-        "estimated_transmission_loss_db": round(tl_est, 2),
-        "snr_after_channel_db": snr_post,
+        "tl_db": round(tl_est, 2),
+        "output_normalization_gain_db": gain_db,
         "cir_duration_s": audio_duration_s,
         "cir_fs_hz": fs,
     }

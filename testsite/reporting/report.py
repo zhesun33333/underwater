@@ -25,7 +25,7 @@ class ReportGenerator:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def generate(self, hierarchical: HierarchicalMetrics,
-                 model_name: str = "水声大模型",
+                 model_name: str = "Underwater Acoustic LLM",
                  reasoning: Optional[ReasoningMetrics] = None) -> str:
         """生成完整评估报告。"""
         sections = [
@@ -94,7 +94,7 @@ class ReportGenerator:
 
     @staticmethod
     def _confusion_table(labels: List[str], cm: List[List[int]]) -> str:
-        lines = ["| 真实 \\ 预测 | " + " | ".join(labels) + " |"]
+        lines = ["| True \\ Predicted | " + " | ".join(labels) + " |"]
         lines.append("|" + "---|" * (len(labels) + 1))
         for i, row in enumerate(cm):
             lines.append(f"| {labels[i]} | " + " | ".join(str(v) for v in row) + " |")
@@ -102,11 +102,11 @@ class ReportGenerator:
 
     @staticmethod
     def _header(name: str) -> str:
-        return f"# 水声大模型层级分类评估报告\n\n**模型**: {name}\n**时间**: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        return f"# Underwater Acoustic LLM — Hierarchical Classification Evaluation Report\n\n**Model**: {name}\n**Time**: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
 
     @staticmethod
     def _hierarchical_section(h: HierarchicalMetrics) -> str:
-        lines = ["---\n## 一、层级分类评估\n"]
+        lines = ["---\n## 1. Hierarchical Classification\n"]
         for lm in [h.l1, h.l2, h.l3]:
             if lm is None:
                 continue
@@ -115,8 +115,8 @@ class ReportGenerator:
             lines.append(f"- Macro F1: **{lm.macro_f1:.4f}**\n")
         # L3 per-class
         if h.l3 and h.l3.per_class:
-            lines.append("### L3 各类别精度\n")
-            lines.append("| 类别 | Precision | Recall | F1 | Support |")
+            lines.append("### L3 Per-Class Accuracy\n")
+            lines.append("| Class | Precision | Recall | F1 | Support |")
             lines.append("|------|-----------|--------|----|---------|")
             for name, m in h.l3.per_class.items():
                 lines.append(f"| {name} | {m['precision']:.2%} | {m['recall']:.2%} | {m['f1']:.4f} | {m['support']} |")
@@ -126,28 +126,28 @@ class ReportGenerator:
     @staticmethod
     def _joint_section(h: HierarchicalMetrics) -> str:
         return f"""---
-## 二、层级联合指标
+## 2. Hierarchical Joint Metrics
 
-| 指标 | 数值 | 说明 |
+| Metric | Value | Description |
 |------|------|------|
-| L2\\|L1 | **{h.l2_given_l1:.2%}** | L1 正确前提下 L2 正确的条件概率 |
-| L3\\|L2 | **{h.l3_given_l2:.2%}** | L2 正确前提下 L3 正确的条件概率 |
-| Hierarchical Joint | **{h.joint_accuracy:.2%}** | L1+L2+L3 三级全对 |
+| L2\\|L1 | **{h.l2_given_l1:.2%}** | Conditional prob. L2 correct given L1 correct |
+| L3\\|L2 | **{h.l3_given_l2:.2%}** | Conditional prob. L3 correct given L2 correct |
+| Hierarchical Joint | **{h.joint_accuracy:.2%}** | L1 + L2 + L3 all correct |
 """
 
     @staticmethod
     def _source_stratified_section(data: dict) -> str:
         lines = [
-            "---\n## 三、分源质量分层\n",
-            "PulseCom 按传播损失 (TL) 分层，Ship 按线谱信噪比 (SNR) 分层。\n",
+            "---\n## 3. Source-Stratified Quality\n",
+            "PulseCom stratified by transmission loss (TL), Ship stratified by line-spectrum SNR.\n",
         ]
         for src_key in ["PulseCom_TL", "Ship_SNR"]:
             src = data.get(src_key, {})
             if not src or not src.get("bins"):
                 continue
             lines.append(f"### {src.get('name', src_key)}")
-            lines.append(f"总样本: {src.get('count', 0)}\n")
-            lines.append("| 区间 | 样本数 | L3 Accuracy | Cascade Rate |")
+            lines.append(f"Total samples: {src.get('count', 0)}\n")
+            lines.append("| Bin | Count | L3 Accuracy | Cascade Rate |")
             lines.append("|------|--------|-------------|-------------|")
             for b in src["bins"]:
                 lines.append(
@@ -163,8 +163,8 @@ class ReportGenerator:
             return ""
 
         lines = [
-            "---\n## 逐类 SNR 退化分析\n",
-            "### 各类别在不同 SNR 下的 L3 准确率\n",
+            "---\n## Per-Class SNR Degradation Analysis\n",
+            "### L3 Accuracy by Class across SNR Bins\n",
         ]
 
         all_classes = sorted(degradation.keys(),
@@ -175,7 +175,7 @@ class ReportGenerator:
         for label in per_bin:
             bin_data = per_bin[label]
             lines.append(f"#### {label}")
-            lines.append("| 类别 | 样本数 | Accuracy |")
+            lines.append("| Class | Count | Accuracy |")
             lines.append("|------|--------|----------|")
             for cls in all_classes:
                 cd = bin_data.get(cls, {})
@@ -186,8 +186,8 @@ class ReportGenerator:
             lines.append("")
 
         if degradation:
-            lines.append("### SNR 退化幅度 (≥15dB → ≤-5dB)\n")
-            lines.append("| 类别 | 退化幅度 |")
+            lines.append("### SNR Degradation Magnitude (≥15dB → ≤-5dB)\n")
+            lines.append("| Class | Degradation |")
             lines.append("|------|----------|")
             for cls, drop in sorted(degradation.items(), key=lambda x: -x[1]):
                 lines.append(f"| {cls} | {drop:.1%} |")
@@ -198,21 +198,21 @@ class ReportGenerator:
     @staticmethod
     def _reasoning_section(r: ReasoningMetrics) -> str:
         return f"""---
-## 四、推理质量
+## 4. Reasoning Quality
 
-| 指标 | 数值 |
+| Metric | Value |
 |------|------|
 | Term Alignment | **{r.alignment_rate:.2%}** |
 | Contradiction | {r.contradiction_rate:.2%} |
-| 概念混淆 | {r.concept_confusion_rate:.2%} |
-| 空洞泛化 | {r.vague_rate:.2%} |
-| 术语堆砌 | {r.term_stacking_rate:.2%} |
+| Concept Confusion | {r.concept_confusion_rate:.2%} |
+| Vague / Generic | {r.vague_rate:.2%} |
+| Term Stacking | {r.term_stacking_rate:.2%} |
 """
 
     @staticmethod
     def _parse_tier_section(h: HierarchicalMetrics) -> str:
-        lines = ["---\n## 五、答案解析层级分布\n"]
-        lines.append("| Tier | 样本数 | 占比 |")
+        lines = ["---\n## 5. Parse Tier Distribution\n"]
+        lines.append("| Tier | Count | Ratio |")
         lines.append("|------|--------|------|")
         for tier in sorted(h.parse_tier_dist.keys()):
             cnt = h.parse_tier_dist[tier]
@@ -222,14 +222,14 @@ class ReportGenerator:
 
     @staticmethod
     def _recommendations(h: HierarchicalMetrics) -> str:
-        lines = ["---\n## 六、结论与建议\n"]
+        lines = ["---\n## 6. Conclusions and Recommendations\n"]
         if h.l3 and h.l3.accuracy < 0.30:
-            lines.append("- L3 准确率偏低，建议检查分类体系是否过于细粒度或训练数据是否充分。")
+            lines.append("- L3 accuracy is low; consider checking if the taxonomy is overly fine-grained or training data is insufficient.")
         if h.l3 and h.l3.per_class:
             worst = sorted(h.l3.per_class.items(), key=lambda x: x[1]["f1"])[:3]
             worst_strs = [f"{n}(F1={m['f1']:.3f})" for n, m in worst]
-            lines.append(f"- 最弱类别: {', '.join(worst_strs)}")
+            lines.append(f"- Weakest classes: {', '.join(worst_strs)}")
         if h.l2_given_l1 < 0.50:
-            lines.append("- L2|L1 偏低，L1 分类错误会显著影响下游分类。")
+            lines.append("- L2|L1 is low; L1 classification errors significantly impact downstream classification.")
         lines.append("")
         return "\n".join(lines)

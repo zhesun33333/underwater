@@ -93,8 +93,9 @@ def main():
 
     tar_cmd = ["tar", "-cf", str(archive_path), "-C", str(out_dir_abs.parent), out_dir.name]
     if not args.no_compress:
-        tar_cmd.insert(2, "-I")
-        tar_cmd.insert(3, "pigz -p4" if shutil.which("pigz") else "gzip")
+        # insert after archive path, before -C: tar -cf <archive> -I <prog> -C ...
+        tar_cmd.insert(3, "-I")
+        tar_cmd.insert(4, "pigz -p4" if shutil.which("pigz") else "gzip")
 
     result = subprocess.run(tar_cmd, capture_output=True, text=True)
     if result.returncode != 0:

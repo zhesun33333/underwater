@@ -1,11 +1,11 @@
 """
-舰船辐射噪声数据合成管线 — 第二步：QA 对生成
-生成三轮对话 SFT 数据:
-  Turn 1: 主动/被动判别 → 短答案
-  Turn 2: 噪声源具体类型 → 长答案
-  Turn 3: 判断依据 → 定性推理文本
-支持 train/val/test 分裂 (70/15/15, 统一三轮格式)
-用法:
+Underwater acoustic LLM data synthesis — Step 2: QA pair generation (Ship)
+Generates 3-turn SFT data:
+  Turn 1: Active/passive discrimination → short answer
+  Turn 2: Noise source specific type → long answer
+  Turn 3: Reasoning rationale → qualitative reasoning text
+Supports train/val/test split (70/15/15, unified 3-turn format)
+Usage:
   python pipeline_ship_step2_qa.py [--config config_ship.yaml]
 """
 import argparse
@@ -25,49 +25,57 @@ from utils.json_parser import (
 # ============================================================
 # 模板定义
 # ============================================================
+# Turn 1 — Active/passive discrimination
 T1_TEMPLATES = [
-    "请判断这段水声信号是主动发射的还是被动接收的。\n选项：\nA. 主动信号\nB. 被动信号",
-    "这段音频中的信号是主动声纳发出的，还是被动监听到的？\n选项：\nA. 主动信号\nB. 被动信号",
-    "先判断最基本的问题：这信号是主动式的还是被动式的？\n选项：\nA. 主动信号\nB. 被动信号",
-    "请先区分这段水下声信号的主动/被动属性。\n选项：\nA. 主动信号\nB. 被动信号",
-    "第一个问题：这个声信号是人为主动发射的，还是目标自身辐射的？\n选项：\nA. 主动信号\nB. 被动信号",
-    "从主动探测和被动监听的角度，这段信号属于哪一类？\n选项：\nA. 主动信号\nB. 被动信号",
-    "请判断信号来源——是主动声纳系统发射的，还是被动接收到的辐射噪声？\n选项：\nA. 主动信号\nB. 被动信号",
-    "先做一个基本判断：该水声信号是主动信号还是被动信号？\n选项：\nA. 主动信号\nB. 被动信号",
+    "Determine whether this underwater acoustic signal is actively transmitted or passively received.\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "Is the signal in this audio deliberately transmitted, or received through passive listening?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "First, the most basic question: is this signal active or passive?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "Classify the active/passive nature of this underwater acoustic signal.\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "Is this acoustic signal artificially transmitted, or radiated by the target itself?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "From an active detection vs. passive listening perspective, which category does this signal belong to?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "Identify the signal source: deliberately transmitted, or radiated noise received passively?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
+    "Make a fundamental judgment: is this underwater acoustic signal active or passive?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
 ]
 # Ship 专用 Turn 2 — 问噪声源类型，不透露子类
+_T2_SHIP_OPTIONS = (
+    "A. Passive — Ship-radiated noise — Cargo vessel\n"
+    "B. Passive — Ship-radiated noise — Cruise ship\n"
+    "C. Passive — Ship-radiated noise — Fishing vessel\n"
+    "D. Passive — Ship-radiated noise — Naval vessel\n"
+    "E. Passive — Ship-radiated noise — Underwater target"
+)
 T2_TEMPLATES = [
-    "好的，{L1}。请判断这属于哪类舰船或水下目标的辐射噪声。\n选项：\nA. 被动信号-舰船辐射噪声-货船\nB. 被动信号-舰船辐射噪声-邮轮\nC. 被动信号-舰船辐射噪声-渔船\nD. 被动信号-舰船辐射噪声-军舰\nE. 被动信号-舰船辐射噪声-水下目标",
-    "确认是{L1}。接下来识别噪声源的具体类型。\n选项：\nA. 被动信号-舰船辐射噪声-货船\nB. 被动信号-舰船辐射噪声-邮轮\nC. 被动信号-舰船辐射噪声-渔船\nD. 被动信号-舰船辐射噪声-军舰\nE. 被动信号-舰船辐射噪声-水下目标",
-    "{L1}。那它是哪类平台发出的？\n选项：\nA. 被动信号-舰船辐射噪声-货船\nB. 被动信号-舰船辐射噪声-邮轮\nC. 被动信号-舰船辐射噪声-渔船\nD. 被动信号-舰船辐射噪声-军舰\nE. 被动信号-舰船辐射噪声-水下目标",
-    "收到。对于这个{L1}，请进一步判断目标类型。\n选项：\nA. 被动信号-舰船辐射噪声-货船\nB. 被动信号-舰船辐射噪声-邮轮\nC. 被动信号-舰船辐射噪声-渔船\nD. 被动信号-舰船辐射噪声-军舰\nE. 被动信号-舰船辐射噪声-水下目标",
-    "明白了。这种辐射噪声最可能来自什么类型的目标？\n选项：\nA. 被动信号-舰船辐射噪声-货船\nB. 被动信号-舰船辐射噪声-邮轮\nC. 被动信号-舰船辐射噪声-渔船\nD. 被动信号-舰船辐射噪声-军舰\nE. 被动信号-舰船辐射噪声-水下目标",
-    "好。请对该被动信号的噪声源做进一步分类。\n选项：\nA. 被动信号-舰船辐射噪声-货船\nB. 被动信号-舰船辐射噪声-邮轮\nC. 被动信号-舰船辐射噪声-渔船\nD. 被动信号-舰船辐射噪声-军舰\nE. 被动信号-舰船辐射噪声-水下目标",
+    f"Good — the signal is {{L1}}. Identify which type of vessel or underwater target produced this radiated noise.\nOptions:\n{_T2_SHIP_OPTIONS}",
+    f"Confirmed as {{L1}}. Now identify the specific type of noise source.\nOptions:\n{_T2_SHIP_OPTIONS}",
+    f"Signal is {{L1}}. What kind of platform emitted this noise?\nOptions:\n{_T2_SHIP_OPTIONS}",
+    f"Got it. For this {{L1}} signal, further determine the target type.\nOptions:\n{_T2_SHIP_OPTIONS}",
+    f"Understood. What type of target is this radiated noise most likely from?\nOptions:\n{_T2_SHIP_OPTIONS}",
+    f"OK. Further classify the noise source of this {{L1}} signal.\nOptions:\n{_T2_SHIP_OPTIONS}",
 ]
-# Turn 3 — 要求说明判断依据
-T3_PROMPT = "请简要说明你的判断依据。"
+# Turn 3 — Reasoning
+T3_PROMPT = "Please briefly explain your reasoning."
 # ============================================================
 # 答案生成 — 选项字母格式 (方案 A)
 # ============================================================
 
 # L3 key → T2 完整选项文本 (Ship passive, 5 选 1)
 _T2_PASSIVE_FULL = {
-    "cargo": "A. 被动信号-舰船辐射噪声-货船",
-    "cruise": "B. 被动信号-舰船辐射噪声-邮轮",
-    "fishing": "C. 被动信号-舰船辐射噪声-渔船",
-    "warship": "D. 被动信号-舰船辐射噪声-军舰",
-    "underwater_target": "E. 被动信号-舰船辐射噪声-水下目标",
+    "cargo": "A. Passive — Ship-radiated noise — Cargo vessel",
+    "cruise": "B. Passive — Ship-radiated noise — Cruise ship",
+    "fishing": "C. Passive — Ship-radiated noise — Fishing vessel",
+    "warship": "D. Passive — Ship-radiated noise — Naval vessel",
+    "underwater_target": "E. Passive — Ship-radiated noise — Underwater target",
 }
 
 def get_t1_answer(l1: str) -> str:
     """Turn 1 答案: 完整选项文本。"""
-    return "A. 主动信号" if l1 == "主动信号" else "B. 被动信号"
+    return "A. Actively transmitted signal" if l1 == "actively transmitted" else "B. Passively received signal"
 
 
 def build_turn2_answer(labels: Dict[str, str]) -> str:
     """Turn 2 答案: 完整选项文本 (A-E for passive)。"""
     l3 = labels["L3"]
-    return _T2_PASSIVE_FULL.get(l3, "A. 被动信号-舰船辐射噪声-货船")
+    return _T2_PASSIVE_FULL.get(l3, "A. Passive — Ship-radiated noise — Cargo vessel")
 
 
 def build_turn3_answer(labels: Dict[str, str]) -> str:
@@ -76,52 +84,23 @@ def build_turn3_answer(labels: Dict[str, str]) -> str:
 
 
 # ============================================================
-# T3 结构化推理模板 (与 pipeline_step2_qa.py 共享定义)
-# 格式: L1描述术语 + L2特征术语 + L3区分性术语
+# T3 结构化推理模板
+# L1/L2/L3 术语从 shared_terminology.py 统一导入 (single source of truth)
 # ============================================================
-
-# L1 级描述术语
-_L1_ACTIVE_TERMS  = ["主动发射信号", "主动声纳信号", "人为主动发射信号"]
-_L1_PASSIVE_TERMS = ["被动接收信号", "被动监听信号", "目标自身辐射信号"]
-
-# L2 级特征术语 (按 L1 分组)
-_L2_ACTIVE_TERMS = {
-    "探测脉冲类": ["探测脉冲特征", "脉冲探测模式", "声纳探测脉冲特性"],
-    "通信类":     ["水声通信特征", "数字通信调制", "通信信号调制模式"],
-}
-_L2_PASSIVE_TERMS = {
-    "舰船辐射噪声": ["舰船辐射噪声特征", "船舶辐射噪声特性", "目标辐射噪声模式"],
-}
-
-# L3 级区分性术语 (每类随机选 2-3 个)
-# 与 testsite/core/scorer.py 的 _L3_SHOULD 保持同步
-_L3_TERMS = {
-    "CW":  ["单频", "连续波", "音调不变", "单音调", "频率集中"],
-    "LFM": ["线性调频", "线性扫频", "音调线性", "频率滑移", "频带展宽",
-            "由低变高", "由高变低"],
-    "HFM": ["双曲调频", "双曲扫频", "非线性", "先急后缓", "先快后慢"],
-    "2FSK": ["两个音调", "二元调制", "频移键控", "频率跳变", "音调切换"],
-    "4FSK": ["四个音调", "四进制", "频移键控", "频率跳变", "多音调交替"],
-    "BPSK": ["相位翻转", "相移键控", "二进制", "两个状态", "顿挫感", "音量稳定"],
-    "QPSK": ["相移键控", "四个状态", "四进制", "多状态切换", "响度恒定"],
-    "OFDM": ["子载波", "多载波", "正交", "频分复用", "并行传输", "密集子载波"],
-    "cargo":   ["谐波结构清晰", "轴频", "轴频节律", "低速大型", "大型商船",
-                "规律节律", "谐音丰富"],
-    "cruise":  ["机械噪声密集", "密集机械", "高速", "多机组", "宽带噪声",
-                "中高频段", "客船特征"],
-    "fishing": ["小型", "结构简单", "稀疏谐音", "柴油机", "音量较小",
-                "低次谐音", "谐音有限"],
-    "warship": ["强劲", "大功率", "军用舰船", "多轴推进", "多组谐波",
-                "复杂密集", "能量集中低频"],
-    "underwater_target": ["水下目标", "平滑均匀", "音量低", "宽带为主",
-                          "谐音稀少", "缺乏节律"],
-}
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from shared_terminology import (
+    L1_ACTIVE_TERMS  as _L1_ACTIVE_TERMS,
+    L1_PASSIVE_TERMS as _L1_PASSIVE_TERMS,
+    L2_ACTIVE_TERMS  as _L2_ACTIVE_TERMS,
+    L2_PASSIVE_TERMS as _L2_PASSIVE_TERMS,
+    L3_PRECISE       as _L3_TERMS,
+)
 
 # T3 句式模板 (3 种变体)
 _T3_TEMPLATES = [
-    "该信号为{L1}，具有{L2}，具体表现为{L3}。",
-    "从声学特征判断，属于{L1}，{L2}明显，{L3}是其典型标志。",
-    "音频分析表明为{L1}，听感上{L2}突出，{L3}。",
+    "The signal is {L1}, exhibiting {L2}, characterized by {L3}.",
+    "Based on acoustic features, the signal is {L1}; {L2} features are prominent; {L3} is a distinguishing indicator.",
+    "Audio analysis indicates the signal is {L1}; aurally, {L2} dominates, with {L3}.",
 ]
 
 
@@ -132,17 +111,17 @@ def _build_reasoning(l3: str) -> str:
         return ""
 
     k = random.randint(2, min(3, len(terms)))
-    l3_text = "、".join(random.sample(terms, k))
+    l3_text = ", ".join(random.sample(terms, k))
 
     if l3 in ("CW", "LFM", "HFM"):
         l1_text = random.choice(_L1_ACTIVE_TERMS)
-        l2_text = random.choice(_L2_ACTIVE_TERMS["探测脉冲类"])
+        l2_text = random.choice(_L2_ACTIVE_TERMS["detection pulse"])
     elif l3 in ("2FSK", "4FSK", "BPSK", "QPSK", "OFDM"):
         l1_text = random.choice(_L1_ACTIVE_TERMS)
-        l2_text = random.choice(_L2_ACTIVE_TERMS["通信类"])
+        l2_text = random.choice(_L2_ACTIVE_TERMS["communication signal"])
     else:
         l1_text = random.choice(_L1_PASSIVE_TERMS)
-        l2_text = random.choice(_L2_PASSIVE_TERMS["舰船辐射噪声"])
+        l2_text = random.choice(_L2_PASSIVE_TERMS["ship-radiated noise"])
 
     template = random.choice(_T3_TEMPLATES)
     return template.replace("{L1}", l1_text).replace("{L2}", l2_text).replace("{L3}", l3_text)
@@ -208,7 +187,7 @@ def process_single_json(
     except Exception:
         return None
     labels = extract_labels(meta)
-    if labels["L1"] == "未知":
+    if labels["L1"] == "unknown":
         return None
     sample_id = get_id(meta)
     wav_rel = get_wav_path(meta)

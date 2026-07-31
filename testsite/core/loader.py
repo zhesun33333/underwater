@@ -72,7 +72,10 @@ class DataLoader:
             gt = embedded_gt
             meta = {}
             if embedded_meta:
-                meta["snr_db"] = embedded_meta.get("snr_db")
+                if "tl_db" in embedded_meta:
+                    meta["tl_db"] = embedded_meta["tl_db"]
+                if "snr_db" in embedded_meta:
+                    meta["snr_db"] = embedded_meta["snr_db"]
                 meta["ssp_complexity"] = embedded_meta.get("ssp_complexity")
         else:
             gt, meta = self._lookup_meta(audio_base, audio_rel, sample_id)
@@ -118,10 +121,13 @@ class DataLoader:
                     if gt.get("L1") == "unknown":
                         continue
 
-                    # 提取 SNR
+                    # 提取质量指标: PulseCom → tl_db, Ship → snr_db
                     bo = raw.get("bellhop_output", {})
-                    snr = bo.get("snr_after_channel_db")
                     metadata = {}
+                    tl = bo.get("tl_db")
+                    snr = bo.get("snr_db")
+                    if tl is not None:
+                        metadata["tl_db"] = float(tl)
                     if snr is not None:
                         metadata["snr_db"] = float(snr)
 

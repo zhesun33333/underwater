@@ -139,7 +139,7 @@ class TextOnlyEvaluator:
     @staticmethod
     def _l1_display_name(l1_key: str) -> str:
         if l1_key == "active":
-            return "主动信号"
+            return "actively transmitted"
         elif l1_key == "passive":
-            return "被动信号"
-        return "该信号"
+            return "passively received"
+        return "unidentified"

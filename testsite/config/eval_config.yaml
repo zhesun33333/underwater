@@ -1,139 +1,165 @@
-# 水声大模型评估配置文件
-# 三级层级分类评估 — 不含参数估计，不含消融
+# Underwater Acoustic LLM Evaluation Configuration
+# 3-level hierarchical classification — no parameter estimation, no ablation
 
 # ============================================================
-# 分类体系: L1 → L2 → L3 层级树
+# Taxonomy: L1 → L2 → L3 hierarchical tree
 # ============================================================
 taxonomy:
   L1:
-    name: "主动/被动"
-    description: "判断信号是主动发射还是被动辐射"
+    name: "Active/Passive"
+    description: "Determine whether the signal is actively transmitted or passively received"
     classes:
       - key: active
-        name: "主动信号"
-        aliases: ["主动", "主动信号", "主动发射", "主动式", "主动声纳", "人为发射"]
+        name: "Actively transmitted signal"
+        aliases: ["actively transmitted", "active", "active signal", "active transmission",
+                  "active sonar", "active sonar signal", "active detection",
+                  "artificially transmitted", "deliberately emitted", "sonar transmission"]
       - key: passive
-        name: "被动信号"
-        aliases: ["被动", "被动信号", "被动接收", "被动式", "目标辐射", "被动监听"]
+        name: "Passively received signal"
+        aliases: ["passively received", "passive", "passive signal", "passive reception",
+                  "passive listening", "target-radiated", "target-radiated signal",
+                  "target-radiated noise", "radiated noise", "passive detection",
+                  "ship-radiated", "naturally emitted"]
 
   L2:
-    name: "信号子类"
-    description: "在L1方向下进一步划分子类"
+    name: "Signal Subcategory"
+    description: "Further classify within the L1 category"
     classes:
       - key: pulse
-        name: "探测脉冲类"
+        name: "Detection pulse"
         parent: active
-        aliases: ["探测脉冲类", "脉冲信号", "脉冲", "声纳脉冲"]
+        aliases: ["detection pulse", "sonar pulse", "sonar detection pulse",
+                  "pulse signal", "detection pulse class", "active sonar pulse"]
       - key: communication
-        name: "通信类"
+        name: "Communication signal"
         parent: active
-        aliases: ["通信类", "通信信号", "数字通信", "调制信号", "水声通信"]
+        aliases: ["communication", "communication signal", "underwater communication",
+                  "digital communication", "underwater acoustic communication",
+                  "acoustic communication"]
       - key: ship_noise
-        name: "舰船辐射噪声"
+        name: "Ship-radiated noise"
         parent: passive
-        aliases: ["舰船辐射噪声", "舰船噪声", "船舶噪声", "辐射噪声", "船噪"]
+        aliases: ["ship-radiated noise", "ship radiated noise", "vessel-radiated noise",
+                  "ship noise", "vessel noise", "radiated noise", "target-radiated noise",
+                  "shipping noise"]
 
   L3:
-    name: "具体类型"
-    description: "最细粒度的信号/目标类型"
+    name: "Specific Type"
+    description: "Finest-grained signal/target type"
     classes:
-      # ── 探测脉冲类 ──
+      # ── Detection pulse ──
       - key: CW
-        name: "CW连续波"
+        name: "CW (Continuous Wave)"
         parent: pulse
-        aliases: ["CW", "CW脉冲", "单频脉冲", "连续波", "单频信号"]
+        aliases: ["CW", "CW pulse", "continuous wave", "CW continuous wave",
+                  "single-frequency pulse", "single frequency", "single tone pulse"]
       - key: LFM
-        name: "LFM线性调频"
+        name: "LFM (Linear Frequency Modulation)"
         parent: pulse
-        aliases: ["LFM", "LFM脉冲", "线性调频", "chirp", "线性扫频"]
+        aliases: ["LFM", "LFM pulse", "linear frequency modulation", "linear chirp",
+                  "LFM chirp", "linear sweep", "linear FM"]
       - key: HFM
-        name: "HFM双曲调频"
+        name: "HFM (Hyperbolic Frequency Modulation)"
         parent: pulse
-        aliases: ["HFM", "HFM脉冲", "双曲调频", "双曲扫频"]
+        aliases: ["HFM", "HFM pulse", "hyperbolic frequency modulation",
+                  "hyperbolic chirp", "hyperbolic FM", "hyperbolic sweep",
+                  "Doppler-invariant pulse"]
 
-      # ── 通信类 ──
+      # ── Communication ──
       - key: 2FSK
-        name: "2FSK二进制频移键控"
+        name: "2FSK (Binary Frequency Shift Keying)"
         parent: communication
-        aliases: ["2FSK", "二进制频移键控", "2fsk"]
+        aliases: ["2FSK", "binary FSK", "binary frequency shift keying",
+                  "2-FSK", "2fsk", "2-level FSK"]
       - key: 4FSK
-        name: "4FSK四进制频移键控"
+        name: "4FSK (Quaternary Frequency Shift Keying)"
         parent: communication
-        aliases: ["4FSK", "四进制频移键控", "4fsk"]
+        aliases: ["4FSK", "quaternary FSK", "quaternary frequency shift keying",
+                  "4-FSK", "4fsk", "4-ary FSK", "4-level FSK"]
       - key: BPSK
-        name: "BPSK二进制相移键控"
+        name: "BPSK (Binary Phase Shift Keying)"
         parent: communication
-        aliases: ["BPSK", "二进制相移键控", "bpsk"]
+        aliases: ["BPSK", "binary PSK", "binary phase shift keying",
+                  "BPSK modulation", "bpsk", "2-PSK"]
       - key: QPSK
-        name: "QPSK四进制相移键控"
+        name: "QPSK (Quadrature Phase Shift Keying)"
         parent: communication
-        aliases: ["QPSK", "四进制相移键控", "qpsk"]
+        aliases: ["QPSK", "quadrature PSK", "quadrature phase shift keying",
+                  "QPSK modulation", "qpsk", "4-PSK"]
       - key: OFDM
-        name: "OFDM正交频分复用"
+        name: "OFDM (Orthogonal Frequency Division Multiplexing)"
         parent: communication
-        aliases: ["OFDM", "正交频分复用", "ofdm"]
+        aliases: ["OFDM", "orthogonal frequency division multiplexing",
+                  "OFDM modulation", "ofdm", "multi-carrier modulation"]
 
-      # ── 舰船辐射噪声 ──
+      # ── Ship-radiated noise ──
       - key: cargo
-        name: "货船"
+        name: "Cargo vessel"
         parent: ship_noise
-        aliases: ["货船", "民用货船", "商船", "cargo"]
+        aliases: ["cargo vessel", "cargo ship", "cargo", "merchant vessel",
+                  "merchant ship", "commercial vessel", "commercial ship",
+                  "freighter", "container ship"]
       - key: cruise
-        name: "邮轮"
+        name: "Cruise ship"
         parent: ship_noise
-        aliases: ["邮轮", "大型邮轮", "游轮", "cruise"]
+        aliases: ["cruise ship", "cruise", "passenger vessel", "passenger ship",
+                  "cruise liner", "ocean liner", "cruise passenger"]
       - key: fishing
-        name: "渔船"
+        name: "Fishing vessel"
         parent: ship_noise
-        aliases: ["渔船", "小型渔船", "fishing", "fishing_boat"]
+        aliases: ["fishing vessel", "fishing boat", "fishing", "fisherman boat",
+                  "small fishing", "trawler", "commercial fishing"]
       - key: warship
-        name: "军舰"
+        name: "Naval vessel"
         parent: ship_noise
-        aliases: ["军舰", "军用舰船", "战舰", "warship"]
+        aliases: ["naval vessel", "warship", "naval ship", "military vessel",
+                  "military ship", "combat vessel", "navy ship", "frigate",
+                  "destroyer", "submarine"]
       - key: underwater_target
-        name: "水下目标"
+        name: "Underwater target"
         parent: ship_noise
-        aliases: ["水下目标", "水下航行器", "水下航行体", "underwater_target"]
+        aliases: ["underwater target", "underwater vehicle", "underwater object",
+                  "subsurface target", "submerged target", "UUV", "underwater craft",
+                  "unmanned underwater vehicle", "underwater drone", "AUV"]
 
 # ============================================================
-# 评估 Prompt 定义
+# Evaluation Prompts
 # ============================================================
 prompts:
-  # --- 三轮对话 (用于 Turn Consistency 测试) ---
+  # --- 3-turn dialogue ---
   three_turn:
     turn1:
-      - "请判断这段水声信号是主动发射的还是被动接收的。\n选项：\nA. 主动信号\nB. 被动信号"
-      - "这段音频中的信号是主动声纳发出的，还是被动监听到的？\n选项：\nA. 主动信号\nB. 被动信号"
-      - "先判断最基本的问题：这信号是主动式的还是被动式的？\n选项：\nA. 主动信号\nB. 被动信号"
+      - "Determine whether this underwater acoustic signal is actively transmitted or passively received.\nOptions:\nA. Actively transmitted signal\nB. Passively received signal"
+      - "Is the signal in this audio deliberately transmitted, or received through passive listening?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal"
+      - "First, the most basic question: is this signal active or passive?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal"
     turn2_active:
-      - "好的，{L1}。请进一步判断它是探测脉冲类还是通信类。\n选项：\nA. 主动信号-探测脉冲类-CW连续波\nB. 主动信号-探测脉冲类-LFM线性调频\nC. 主动信号-探测脉冲类-HFM双曲调频\nD. 主动信号-通信类-2FSK\nE. 主动信号-通信类-4FSK\nF. 主动信号-通信类-BPSK\nG. 主动信号-通信类-QPSK\nH. 主动信号-通信类-OFDM"
-      - "明白了，{L1}。接下来识别它属于哪个子类。\n选项：\nA. 主动信号-探测脉冲类-CW连续波\nB. 主动信号-探测脉冲类-LFM线性调频\nC. 主动信号-探测脉冲类-HFM双曲调频\nD. 主动信号-通信类-2FSK\nE. 主动信号-通信类-4FSK\nF. 主动信号-通信类-BPSK\nG. 主动信号-通信类-QPSK\nH. 主动信号-通信类-OFDM"
-      - "{L1}。那它的具体信号类型是什么？\n选项：\nA. 主动信号-探测脉冲类-CW连续波\nB. 主动信号-探测脉冲类-LFM线性调频\nC. 主动信号-探测脉冲类-HFM双曲调频\nD. 主动信号-通信类-2FSK\nE. 主动信号-通信类-4FSK\nF. 主动信号-通信类-BPSK\nG. 主动信号-通信类-QPSK\nH. 主动信号-通信类-OFDM"
+      - "Good — the signal is {L1}. Now determine whether it is a detection pulse or communication signal, and specify the exact type.\nOptions:\nA. Active — Detection pulse — CW (Continuous Wave)\nB. Active — Detection pulse — LFM (Linear Frequency Modulation)\nC. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)\nD. Active — Communication — 2FSK (Binary Frequency Shift Keying)\nE. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)\nF. Active — Communication — BPSK (Binary Phase Shift Keying)\nG. Active — Communication — QPSK (Quadrature Phase Shift Keying)\nH. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)"
+      - "Understood — it is {L1}. Now identify which subcategory it belongs to.\nOptions:\nA. Active — Detection pulse — CW (Continuous Wave)\nB. Active — Detection pulse — LFM (Linear Frequency Modulation)\nC. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)\nD. Active — Communication — 2FSK (Binary Frequency Shift Keying)\nE. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)\nF. Active — Communication — BPSK (Binary Phase Shift Keying)\nG. Active — Communication — QPSK (Quadrature Phase Shift Keying)\nH. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)"
+      - "Signal is {L1}. What is its specific signal type?\nOptions:\nA. Active — Detection pulse — CW (Continuous Wave)\nB. Active — Detection pulse — LFM (Linear Frequency Modulation)\nC. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)\nD. Active — Communication — 2FSK (Binary Frequency Shift Keying)\nE. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)\nF. Active — Communication — BPSK (Binary Phase Shift Keying)\nG. Active — Communication — QPSK (Quadrature Phase Shift Keying)\nH. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)"
     turn2_passive:
-      - "好的，{L1}。请判断这属于哪类舰船或水下目标的辐射噪声。\n选项：\nA. 被动信号-舰船辐射噪声-货船\nB. 被动信号-舰船辐射噪声-邮轮\nC. 被动信号-舰船辐射噪声-渔船\nD. 被动信号-舰船辐射噪声-军舰\nE. 被动信号-舰船辐射噪声-水下目标"
-      - "确认是{L1}。接下来识别噪声源的具体类型。\n选项：\nA. 被动信号-舰船辐射噪声-货船\nB. 被动信号-舰船辐射噪声-邮轮\nC. 被动信号-舰船辐射噪声-渔船\nD. 被动信号-舰船辐射噪声-军舰\nE. 被动信号-舰船辐射噪声-水下目标"
-      - "{L1}。那它是哪类平台发出的？\n选项：\nA. 被动信号-舰船辐射噪声-货船\nB. 被动信号-舰船辐射噪声-邮轮\nC. 被动信号-舰船辐射噪声-渔船\nD. 被动信号-舰船辐射噪声-军舰\nE. 被动信号-舰船辐射噪声-水下目标"
-    turn3: "请简要说明你的判断依据。"
+      - "Good — the signal is {L1}. Identify which type of vessel or underwater target produced this radiated noise.\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater target"
+      - "Confirmed as {L1}. Now identify the specific type of noise source.\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater target"
+      - "Signal is {L1}. What kind of platform emitted this noise?\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater target"
+    turn3: "Please briefly explain your reasoning."
 
 # ============================================================
-# 模型配置
+# Model Configuration
 # ============================================================
 model:
-  # --- 当前使用的后端 (修改这里切换模型) ---
+  # --- Active backend (modify here to switch models) ---
   backend: "qwen2_audio"                    # mock | qwen2_audio | aero1_audio | voxtral_mini | af_next | kimi_audio
   model_id: "/root/autodl-tmp/models/models/Qwen2-Audio-7B-Instruct/snapshots/master"
-  device: "cuda:0"                          # 或 "auto" 多卡
+  device: "cuda:0"                          # or "auto" for multi-GPU
   torch_dtype: "bfloat16"                   # bfloat16 | float16 | float32
   max_new_tokens: 256
-  temperature: 0.0                          # 0.0 = 贪婪解码
+  temperature: 0.0                          # 0.0 = greedy decoding
 
-  # --- 各模型默认 model_id (HuggingFace) ---
+  # --- Default model_id per backend (HuggingFace) ---
   # qwen2_audio:   "Qwen/Qwen2-Audio-7B-Instruct"
   # aero1_audio:   "lmms-lab/Aero-1-Audio"
   # voxtral_mini:  "mistralai/Voxtral-Mini-3B-2507"
   # af_next:       "nvidia/Audio-Flamingo-Next-Instruct"
   # kimi_audio:    "moonshotai/Kimi-Audio-7B-Instruct"
-  # 本地路径示例:   "/root/autodl-tmp/models/models/<model-name>/snapshots/master"
 
   mock:
     accuracy: 0.85

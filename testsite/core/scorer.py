@@ -155,52 +155,13 @@ class Scorer:
 
     # ================================================================
     # L3 术语-类别对齐矩阵
-    #
-    # 每类只定义自己的区分性术语 (should)。
-    # should_not 自动推导为: 全局术语集合 _ALL_L3_TERMS 中不属于本类的所有术语。
-    # 设计原则: 术语必须具有 L3 类别区分力, 不包含 L1/L2 层面的通用描述。
+    # 从 shared_terminology.py 统一导入 (single source of truth)
     # ================================================================
-    _L3_SHOULD = {
-        # ── 探测脉冲类 ──
-        # 与 pipeline_step2_qa.py / pipeline_ship_step2_qa.py 的 _L3_TERMS 保持同步
-        "CW":  {"单频", "连续波", "音调不变", "单音调", "频率集中"},
-        "LFM": {"线性调频", "线性扫频", "音调线性", "频率滑移",
-                "频带展宽", "由低变高", "由高变低"},
-        "HFM": {"双曲调频", "双曲扫频", "非线性", "先急后缓",
-                "先快后慢"},
-        # ── 通信类 ──
-        "2FSK": {"两个音调", "二元调制", "频移键控", "频率跳变",
-                 "音调切换"},
-        "4FSK": {"四个音调", "四进制", "频移键控", "频率跳变",
-                 "多音调交替"},
-        "BPSK": {"相位翻转", "相移键控", "二进制", "两个状态",
-                 "顿挫感", "音量稳定"},
-        "QPSK": {"相移键控", "四个状态", "四进制",
-                 "多状态切换", "响度恒定"},
-        "OFDM": {"子载波", "多载波", "正交", "频分复用",
-                 "并行传输", "密集子载波"},
-        # ── 舰船辐射噪声 ──
-        "cargo":   {"谐波结构清晰", "轴频", "轴频节律", "低速大型",
-                    "大型商船", "规律节律", "谐音丰富"},
-        "cruise":  {"机械噪声密集", "密集机械", "高速", "多机组",
-                    "宽带噪声", "中高频段", "客船特征"},
-        "fishing": {"小型", "结构简单", "稀疏谐音", "柴油机",
-                    "音量较小", "低次谐音", "谐音有限"},
-        "warship": {"强劲", "大功率", "军用舰船", "多轴推进",
-                    "多组谐波", "复杂密集", "能量集中低频"},
-        "underwater_target": {"水下目标", "平滑均匀", "音量低",
-                              "宽带为主", "谐音稀少", "缺乏节律"},
-    }
+    from shared_terminology import L3_SHOULD as _L3_SHOULD, get_should_not as _get_should_not
 
-    # 全局 L3 区分性术语集合 (自动聚合)
     _ALL_L3_TERMS = set()
     for _s in _L3_SHOULD.values():
         _ALL_L3_TERMS.update(_s)
-
-    def _get_should_not(self, l3: str) -> set:
-        """自动推导: should_not = 全局集合 - 本类术语。"""
-        own = self._L3_SHOULD.get(l3, set())
-        return self._ALL_L3_TERMS - own
 
     def compute_reasoning_quality(
         self,
@@ -268,7 +229,6 @@ class Scorer:
 
         def _tertile_bins(group, metric_key, unit):
             """将 group 按 metric 值升序切为 3 个等大 bin。"""
-            # 收集所有有效质量值并排序
             vals_with_idx = []
             for i, r in enumerate(group):
                 v = r.sample.metadata.get(metric_key)
@@ -283,22 +243,28 @@ class Scorer:
             t1_val = values[n // 3]
             t2_val = values[2 * n // 3]
 
-            # 三个区间的实际值范围
             lo_vals = [v for v in values if v <= t1_val]
             mid_vals = [v for v in values if t1_val < v <= t2_val]
             hi_vals = [v for v in values if v > t2_val]
 
+            bin_specs = []
+            if lo_vals:
+                bin_specs.append((
+                    f"Low  ({lo_vals[0]:.1f} ~ {lo_vals[-1]:.1f} {unit})",
+                    lambda v, t1=t1_val: v is not None and v <= t1, lo_vals))
+            if mid_vals:
+                bin_specs.append((
+                    f"Mid  ({mid_vals[0]:.1f} ~ {mid_vals[-1]:.1f} {unit})",
+                    lambda v, t1=t1_val, t2=t2_val: v is not None and t1 < v <= t2, mid_vals))
+            if hi_vals:
+                bin_specs.append((
+                    f"High ({hi_vals[0]:.1f} ~ {hi_vals[-1]:.1f} {unit})",
+                    lambda v, t2=t2_val: v is not None and v > t2, hi_vals))
+
             bins = []
-            for label, fn, sub_vals in [
-                (f"Low  ({lo_vals[0]:.1f} ~ {lo_vals[-1]:.1f} {unit})",
-                 lambda v: v is not None and v <= t1_val, lo_vals),
-                (f"Mid  ({mid_vals[0]:.1f} ~ {mid_vals[-1]:.1f} {unit})",
-                 lambda v: v is not None and t1_val < v <= t2_val, mid_vals),
-                (f"High ({hi_vals[0]:.1f} ~ {hi_vals[-1]:.1f} {unit})",
-                 lambda v: v is not None and v > t2_val, hi_vals),
-            ]:
+            for label, fn, _sub_vals in bin_specs:
                 matched = [r for r in group
-                           if fn(r.sample.metadata.get(metric_key, -999))]
+                           if fn(r.sample.metadata.get(metric_key))]
                 n_bin = len(matched)
                 if n_bin == 0:
                     continue
@@ -310,7 +276,7 @@ class Scorer:
                 })
             return bins
 
-        pc_bins = _tertile_bins(pulsecom, "snr_db", "dB")
+        pc_bins = _tertile_bins(pulsecom, "tl_db", "dB")
         ship_bins = _tertile_bins(ship, "snr_db", "dB")
 
         return {
@@ -368,8 +334,18 @@ class Scorer:
         return (lo, hi)
 
     @staticmethod
+    def _get_quality_score(r) -> float | None:
+        """Return the quality metric for a sample: tl_db (PulseCom) or snr_db (Ship)."""
+        if r.sample.gt["L1"] == "active":
+            return r.sample.metadata.get("tl_db")
+        else:
+            return r.sample.metadata.get("snr_db")
+
+    @staticmethod
     def compute_per_class_snr(results: list, class_keys: List[str]) -> dict:
-        """逐类别 x SNR 区间交叉分析: 哪些类在低 SNR 下崩溃最快。
+        """逐类别 x 质量区间交叉分析: 哪些类在低质量条件下崩溃最快。
+
+        Ship 用 SNR, PulseCom 用 TL — 两者均通过 _get_quality_score 统一读取。
 
         Returns:
             {"per_bin": {"≥15dB": {"CW": {"count": N, "acc": 0.9}, ...}, ...},
@@ -384,7 +360,7 @@ class Scorer:
 
         per_bin: Dict[str, dict] = {}
         for label, fn in bins:
-            group = [r for r in results if fn(r.sample.metadata.get("snr_db"))]
+            group = [r for r in results if fn(Scorer._get_quality_score(r))]
             bin_data = {}
             for cls in class_keys:
                 cls_group = [r for r in group if r.sample.gt["L3"] == cls]
