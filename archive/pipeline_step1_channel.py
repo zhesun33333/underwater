@@ -300,6 +300,11 @@ def _apply_one_channel(
         bottom=bottom,
         title=f"{sample_id}_ch{ch_idx}",
     )
+    if not arrivals:
+        print(f"  [SKIP] 0 到达 (声影区): {sample_id}_ch{ch_idx}  "
+              f"range={range_km:.2f}km freq={center_freq:.0f}Hz")
+        return None
+
     cir = build_cir(arrivals, fs, audio_duration_s, use_normalized=False)
 
     # --- 卷积 ---

@@ -118,12 +118,11 @@ def parse_arrivals(arr_path: Path, max_arrivals: int = 20) -> List[Dict]:
 
     try:
         arrivals = _parse_arr_text(raw)
-        if arrivals:
-            return _postprocess_arrivals(arrivals, max_arrivals)
+        return _postprocess_arrivals(arrivals, max_arrivals)
     except Exception:
         pass
 
-    # 尝试不同 endianness 的二进制解析
+    # 文本解析失败，尝试不同 endianness 的二进制解析
     for endian in ('<', '>'):
         try:
             arrivals = _parse_arr_raw(raw, endian)
@@ -403,7 +402,7 @@ class BellhopRunner:
         # 运行 BELLHOP (在 temp_dir 下执行)
         try:
             result = subprocess.run(
-                [str(self.bellhop_exe), env_path.name],
+                [str(self.bellhop_exe), env_path.stem],
                 cwd=str(self.temp_dir),
                 capture_output=True,
                 text=True,
