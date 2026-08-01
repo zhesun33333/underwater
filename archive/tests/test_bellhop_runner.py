@@ -14,10 +14,18 @@ from utils.bellhop_runner import (  # noqa: E402
     apply_frequency_dependent_channel,
     build_cir,
     generate_env,
+    resolve_num_beams,
 )
 
 
 class BellhopRunnerTests(unittest.TestCase):
+    def test_adaptive_beams_are_bounded(self):
+        self.assertEqual(resolve_num_beams("adaptive", 5.0), 1000)
+        self.assertEqual(resolve_num_beams("adaptive", 17.525), 1753)
+        self.assertEqual(resolve_num_beams("adaptive", 80.0), 8000)
+        self.assertEqual(resolve_num_beams("bellhop_auto", 80.0), 0)
+        self.assertEqual(resolve_num_beams(2400, 80.0), 2400)
+
     def test_generate_env_covers_long_range_and_uses_auto_beams(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             env_path = Path(temp_dir) / "long_range.env"

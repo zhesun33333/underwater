@@ -32,11 +32,13 @@ from utils.json_parser import (
     get_center_freq, get_geometry,
 )
 from utils.ssp_sampler import SSPSampler
-from utils.bellhop_runner import BellhopRunner, build_cir, apply_channel
+from utils.bellhop_runner import (
+    BellhopRunner, apply_channel, build_cir, resolve_num_beams,
+)
 
 warnings.filterwarnings("ignore")
 
-CHANNEL_MODEL_VERSION = "2.0"
+CHANNEL_MODEL_VERSION = "2.1"
 
 
 # ---- 配置加载 ----
@@ -297,6 +299,13 @@ def _apply_one_channel(
     tx_depth = max(1.0, min(tx_depth, water_depth - 1.0))
     rx_depth = max(1.0, min(rx_depth, water_depth - 1.0))
     range_km = max(0.01, range_km)
+    beam_setting = channel_cfg.get("num_beams", "adaptive")
+    effective_num_beams = resolve_num_beams(
+        beam_setting, range_km,
+        channel_cfg.get("min_beams", 1000),
+        channel_cfg.get("beams_per_km", 100.0),
+        channel_cfg.get("max_beams", 8000),
+    )
 
     # --- 读取音频 ---
     fs, audio = read_audio(wav_path)
@@ -317,9 +326,12 @@ def _apply_one_channel(
         range_km=range_km, water_depth_m=water_depth,
         bottom=bottom,
         title=f"{sample_id}_ch{ch_idx}",
-        num_beams=int(channel_cfg.get("num_beams", 0)),
+        num_beams=beam_setting,
         ray_box_margin=float(channel_cfg.get("ray_box_margin", 1.05)),
         max_arrivals=int(channel_cfg.get("max_arrivals", 20)),
+        min_beams=int(channel_cfg.get("min_beams", 1000)),
+        beams_per_km=float(channel_cfg.get("beams_per_km", 100.0)),
+        max_beams=int(channel_cfg.get("max_beams", 8000)),
     )
     if not arrivals:
         print(f"  [SKIP] 0 到达 (声影区): {sample_id}_ch{ch_idx}  "
@@ -368,7 +380,8 @@ def _apply_one_channel(
         "range_km": round(range_km, 4),
         "range_m": round(range_km * 1000, 2),
         "freq_hz": round(center_freq, 2),
-        "num_beams_requested": int(channel_cfg.get("num_beams", 0)),
+        "num_beams_setting": beam_setting,
+        "num_beams_effective": effective_num_beams,
         "max_arrivals": int(channel_cfg.get("max_arrivals", 20)),
         "ray_box_margin": float(channel_cfg.get("ray_box_margin", 1.05)),
         "ray_box_range_km": round(max(
@@ -426,6 +439,7 @@ class Progress:
         self.no_arrivals = 0
         self.failed = 0
         self.start_time = time.time()
+        self.report_every = 1 if total <= 100 else 100
 
     def update(self, status: str):
         self.processed += 1
@@ -439,7 +453,7 @@ class Progress:
             self.no_arrivals += 1
         else:
             self.failed += 1
-        if self.processed % 100 == 0 or self.processed == self.total:
+        if self.processed % self.report_every == 0 or self.processed == self.total:
             elapsed = time.time() - self.start_time
             rate = self.processed / elapsed if elapsed > 0 else 0
             eta = (self.total - self.processed) / rate if rate > 0 else 0
@@ -466,6 +480,10 @@ def main():
     print("初始化...")
     print(f"  SSP NetCDF: {paths['ssp_nc']}")
     print(f"  BELLHOP exe: {paths['bellhop_exe']}")
+    print(f"  射线策略: {channel_cfg.get('num_beams', 'adaptive')} "
+          f"(min={channel_cfg.get('min_beams', 1000)}, "
+          f"per_km={channel_cfg.get('beams_per_km', 100)}, "
+          f"max={channel_cfg.get('max_beams', 8000)})")
 
     ssp_sampler = SSPSampler(paths["ssp_nc"])
     print(f"  已加载 {ssp_sampler.n_profiles} 根 SSP 剖面")
@@ -506,6 +524,8 @@ def main():
     skip_existing = limits.get("skip_existing", True)
 
     for json_path, ds_root, ds_cfg in all_tasks:
+        if len(all_tasks) <= 100:
+            print(f"  [RUN] {json_path.name}", flush=True)
         result = process_single_audio(
             json_path=json_path,
             dataset_root=ds_root,
@@ -532,6 +552,8 @@ def main():
     print(f"  耗时: {elapsed:.1f}s")
     print(f"  输出: {output_root.resolve()}")
     print(f"{'=' * 60}")
+    if progress.succeeded + progress.partial + progress.skipped == 0:
+        raise SystemExit("Step 1 没有产生或复用任何有效样本")
 
 
 if __name__ == "__main__":

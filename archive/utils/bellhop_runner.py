@@ -2,6 +2,7 @@
 BELLHOP 调用封装
 .env 生成 → bellhop.exe 执行 → .arr 解析 → CIR 构建 → 卷积
 """
+import os
 import struct
 import subprocess
 import time
@@ -23,6 +24,29 @@ except ImportError:
 
 class NoArrivalsError(RuntimeError):
     """BELLHOP completed, but no receiver arrivals were produced."""
+
+
+def resolve_num_beams(
+    setting,
+    range_km: float,
+    min_beams: int = 1000,
+    beams_per_km: float = 100.0,
+    max_beams: int = 8000,
+) -> int:
+    """Resolve fixed, BELLHOP-auto, or bounded distance-adaptive beam count."""
+    if isinstance(setting, str):
+        mode = setting.strip().lower()
+        if mode == "bellhop_auto":
+            return 0
+        if mode != "adaptive":
+            raise ValueError(f"Unsupported num_beams mode: {setting}")
+    elif setting is not None and int(setting) > 0:
+        return int(setting)
+
+    lower = max(3, int(min_beams))
+    upper = max(lower, int(max_beams))
+    estimated = int(np.ceil(float(range_km) * float(beams_per_km)))
+    return min(upper, max(lower, estimated))
 
 
 # ---- BELLHOP .env 文件生成 ----
@@ -416,6 +440,11 @@ class BellhopRunner:
                 f"BELLHOP 可执行文件不存在: {self.bellhop_exe}\n"
                 f"请确认路径或安装 BELLHOP 后修改 config.yaml → paths.bellhop_exe"
             )
+        if not os.access(self.bellhop_exe, os.X_OK):
+            raise PermissionError(
+                f"BELLHOP 文件没有执行权限: {self.bellhop_exe}\n"
+                f"请执行: chmod +x {self.bellhop_exe}"
+            )
 
     def run(
         self,
@@ -428,9 +457,12 @@ class BellhopRunner:
         water_depth_m: float,
         bottom: Optional[Dict] = None,
         title: str = "bellhop_run",
-        num_beams: int = 0,
+        num_beams="adaptive",
         ray_box_margin: float = 1.05,
         max_arrivals: int = 20,
+        min_beams: int = 1000,
+        beams_per_km: float = 100.0,
+        max_beams: int = 8000,
     ) -> List[Dict]:
         """
         运行一次完整的 BELLHOP 计算并返回到达结构。
@@ -450,6 +482,9 @@ class BellhopRunner:
         run_id = f"bh_{ts}"
         env_path = self.temp_dir / f"{run_id}.env"
 
+        effective_num_beams = resolve_num_beams(
+            num_beams, range_km, min_beams, beams_per_km, max_beams,
+        )
         generate_env(
             env_path=env_path,
             title=title,
@@ -464,11 +499,10 @@ class BellhopRunner:
             bottom_sound_speed_mps=bottom["sound_speed_mps"],
             bottom_density_gcc=bottom["density_gcc"],
             bottom_attenuation_db_per_lambda=bottom["attenuation_db_per_lambda"],
-            num_beams=num_beams,
+            num_beams=effective_num_beams,
             ray_box_margin=ray_box_margin,
         )
 
-        # 运行 BELLHOP (在 temp_dir 下执行)
         try:
             result = subprocess.run(
                 [str(self.bellhop_exe), env_path.stem],
@@ -482,34 +516,22 @@ class BellhopRunner:
                 raise RuntimeError(
                     f"BELLHOP 运行失败 (exit={result.returncode}): {stderr}"
                 )
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("BELLHOP 运行超时 (>60s)")
-
-        # 查找输出文件
-        arr_path = self.temp_dir / f"{run_id}.arr"
-        if not arr_path.exists():
-            # BELLHOP 可能输出到不同路径
-            candidates = list(self.temp_dir.glob("*.arr"))
-            if candidates:
-                arr_path = max(candidates, key=lambda p: p.stat().st_mtime)
-            else:
-                # 检查是否有其他输出文件
-                all_files = list(self.temp_dir.glob("*"))
+            arr_path = self.temp_dir / f"{run_id}.arr"
+            if not arr_path.exists():
+                run_files = [f.name for f in self.temp_dir.glob(f"{run_id}.*")]
                 raise FileNotFoundError(
-                    f"BELLHOP 未生成 .arr 文件。临时目录内容: "
-                    f"{[f.name for f in all_files]}"
+                    f"BELLHOP 未生成本次 .arr 文件: {arr_path.name}; "
+                    f"本次临时文件: {run_files}"
                 )
-
-        arrivals = parse_arrivals(arr_path, max_arrivals=max_arrivals)
-
-        # 清理临时文件
-        for f in self.temp_dir.glob(f"{run_id}.*"):
-            try:
-                f.unlink()
-            except OSError:
-                pass
-
-        return arrivals
+            return parse_arrivals(arr_path, max_arrivals=max_arrivals)
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("BELLHOP 运行超时 (>60s)") from e
+        finally:
+            for f in self.temp_dir.glob(f"{run_id}.*"):
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
 
     def run_and_build_cir(
         self,
@@ -526,8 +548,11 @@ class BellhopRunner:
         title: str = "bellhop_run",
         max_arrivals: int = 20,
         use_normalized: bool = True,
-        num_beams: int = 0,
+        num_beams="adaptive",
         ray_box_margin: float = 1.05,
+        min_beams: int = 1000,
+        beams_per_km: float = 100.0,
+        max_beams: int = 8000,
     ) -> Dict:
         """
         运行 BELLHOP → 构建 CIR (一步到位)。
@@ -545,6 +570,9 @@ class BellhopRunner:
             num_beams=num_beams,
             ray_box_margin=ray_box_margin,
             max_arrivals=max_arrivals,
+            min_beams=min_beams,
+            beams_per_km=beams_per_km,
+            max_beams=max_beams,
         )
         if not arrivals:
             raise NoArrivalsError("BELLHOP returned 0 arrivals")
@@ -573,8 +601,11 @@ class BellhopRunner:
         audio_duration_s: float,
         bottom: Optional[Dict] = None,
         max_arrivals: int = 20,
-        num_beams: int = 0,
+        num_beams="adaptive",
         ray_box_margin: float = 1.05,
+        min_beams: int = 1000,
+        beams_per_km: float = 100.0,
+        max_beams: int = 8000,
     ) -> Dict:
         """
         对多个频率运行 BELLHOP，返回共享时延参考的频点 CIR。
@@ -593,6 +624,8 @@ class BellhopRunner:
                     water_depth_m=water_depth_m, bottom=bottom,
                     title=f"bb_{freq:.0f}Hz", num_beams=num_beams,
                     ray_box_margin=ray_box_margin, max_arrivals=max_arrivals,
+                    min_beams=min_beams, beams_per_km=beams_per_km,
+                    max_beams=max_beams,
                 )
                 completed_runs += 1
                 if arrivals:

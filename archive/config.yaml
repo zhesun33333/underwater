@@ -28,7 +28,10 @@ channel:
   range_km_range: [10.0, 80.0]                  # JSON 无有效距离时，按目标远程范围回退
   use_json_geometry: true                       # 优先使用 JSON 中的几何参数
   geometry_jitter_pct: 0.1                      # 在 JSON 几何参数上添加 ±10% 抖动
-  num_beams: 0                                  # 0=BELLHOP 按频率/距离/水深自动估算
+  num_beams: "adaptive"                         # adaptive | bellhop_auto | 固定正整数
+  min_beams: 1000                               # adaptive 模式下限
+  beams_per_km: 100                             # adaptive: 距离(km) × 此值
+  max_beams: 8000                               # adaptive 模式上限，避免远程高频计算爆炸
   ray_box_margin: 1.05                          # RBOX/ZBOX 至少比接收距离/水深大 5%
   max_arrivals: 20                              # 保留的到达条数上限
   output_norm_peak: 0.95                       # 卷积后音频峰值归一化目标 (0<值≤1)
