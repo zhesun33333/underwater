@@ -32,9 +32,11 @@ dataset:
 channel:
   num_channels_per_audio: 2
   water_depth_m_range: [20, 300]
-  range_km_range: [0.2, 10.0]
+  range_km_range: [10.0, 80.0]                  # JSON 无有效距离时，按目标远程范围回退
   use_json_geometry: true
   geometry_jitter_pct: 0.1
+  num_beams: 0                                  # 0=BELLHOP 按频率/距离/水深自动估算
+  ray_box_margin: 1.05                          # RBOX/ZBOX 至少比接收距离/水深大 5%
   max_arrivals: 20
   output_norm_peak: 0.95                       # 卷积后音频峰值归一化目标 (0<值≤1)
   bottom:

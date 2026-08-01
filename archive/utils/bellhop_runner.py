@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import numpy as np
+from scipy.fft import irfft, next_fast_len, rfft
 from scipy.signal import fftconvolve
 
 try:
@@ -18,6 +19,10 @@ except ImportError:
 
     def kaiser(M, beta):
         return get_window(("kaiser", beta), M)
+
+
+class NoArrivalsError(RuntimeError):
+    """BELLHOP completed, but no receiver arrivals were produced."""
 
 
 # ---- BELLHOP .env 文件生成 ----
@@ -36,6 +41,8 @@ def generate_env(
     bottom_sound_speed_mps: float = 1520.0,
     bottom_density_gcc: float = 1.4,
     bottom_attenuation_db_per_lambda: float = 3.0,
+    num_beams: int = 0,
+    ray_box_margin: float = 1.05,
 ):
     """
     生成 BELLHOP .env 输入文件。
@@ -52,11 +59,24 @@ def generate_env(
     lines.append("1")
     lines.append("'CVF'")
 
+    # 裁剪 SSP 到水底深度以上，避免 BELLHOP 读到超深点报错
+    mask = depths_m <= water_depth_m + 1e-6
+    if mask.sum() < 2:
+        raise ValueError(f"SSP 在水深 {water_depth_m:.1f}m 以上点数不足 ({mask.sum()})，无法运行 BELLHOP")
+    z_trim = depths_m[mask]
+    c_trim = sound_speeds_mps[mask]
+    # 确保最后一个点在水底深度
+    if abs(z_trim[-1] - water_depth_m) > 0.01:
+        # 线性插值水底声速
+        c_bottom = np.interp(water_depth_m, depths_m, sound_speeds_mps)
+        z_trim = np.append(z_trim, water_depth_m)
+        c_trim = np.append(c_trim, c_bottom)
+
     # Bellhop 读取顺序：NPts, Sigma, BottomDepth
-    lines.append(f"{len(depths_m)}  1.0  {water_depth_m:.1f}")
+    lines.append(f"{len(z_trim)}  1.0  {water_depth_m:.2f}")
 
     # SSP 记录：每行 depth sound_speed /
-    for z, c in zip(depths_m, sound_speeds_mps):
+    for z, c in zip(z_trim, c_trim):
         lines.append(f"{z:.2f}  {c:.2f}  /")
 
     # 底边界条件：BC + Sigma
@@ -75,13 +95,16 @@ def generate_env(
     lines.append(f"{range_km:.4f} /")
 
     # 运行类型与束参数
-    nbeams = max(21, int(range_km * 5))
     lines.append("'A'")
-    lines.append(f"{nbeams}")
+    # 0 lets BELLHOP choose a range/frequency/depth-aware beam count.
+    lines.append(f"{int(num_beams)}")
     lines.append("-90 90 /")
-    lines.append("0.0  1000.0  10.0")
+    margin = max(1.01, float(ray_box_margin))
+    z_box_m = max(water_depth_m * margin, water_depth_m + 1.0)
+    r_box_km = max(range_km * margin, range_km + 0.1)
+    lines.append(f"0.0  {z_box_m:.2f}  {r_box_km:.4f}")
 
-    env_path.write_text("\n".join(lines), encoding="utf-8")
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 # ---- .arr 文件解析 ----
@@ -176,10 +199,11 @@ def _parse_arr_text(data: bytes) -> List[Dict]:
             magnitude = abs(float(parts[0]))
             phase_deg = float(parts[1])
             delay = float(parts[2])
-            src_ang = float(parts[3])
-            rcv_ang = float(parts[4])
-            top_bnc = int(float(parts[5]))
-            bot_bnc = int(float(parts[6]))
+            delay_imag = float(parts[3])
+            src_ang = float(parts[4])
+            rcv_ang = float(parts[5])
+            top_bnc = int(float(parts[6]))
+            bot_bnc = int(float(parts[7]))
         except ValueError:
             continue
 
@@ -190,6 +214,7 @@ def _parse_arr_text(data: bytes) -> List[Dict]:
 
         arrivals.append({
             "delay_s": float(delay),
+            "delay_imag_s": float(delay_imag),
             "amplitude_real": float(amp_real),
             "amplitude_imag": float(amp_imag),
             "amplitude_linear": float(magnitude),
@@ -268,6 +293,7 @@ def build_cir(
     duration_s: float,
     fractional_delay: bool = True,
     use_normalized: bool = True,
+    delay_reference_s: float = 0.0,
 ) -> np.ndarray:
     """
     从 BELLHOP 到达结构构建离散时间冲激响应。
@@ -287,7 +313,7 @@ def build_cir(
     cir = np.zeros(n_samples, dtype=np.float64)
 
     for a in arrivals:
-        delay = a["delay_s"]
+        delay = a["delay_s"] - delay_reference_s
         if use_normalized:
             amp = a.get("amplitude_normalized", a["amplitude_linear"])
         else:
@@ -330,10 +356,48 @@ def apply_channel(audio: np.ndarray, cir: np.ndarray) -> np.ndarray:
     """
     音频与 CIR 卷积，输出与输入等长。
     """
-    if len(cir) == 0 or np.all(cir == 0):
-        return audio.copy()
+    if len(cir) == 0 or not np.any(np.abs(cir) > 0):
+        raise ValueError("CIR is empty; refusing to return unprocessed audio")
 
     result = fftconvolve(audio, cir, mode="full")
+    return result[:len(audio)]
+
+
+def apply_frequency_dependent_channel(
+    audio: np.ndarray,
+    channels: List[Dict],
+    fs_hz: float,
+) -> np.ndarray:
+    """Apply frequency-dependent CIRs by interpolating their FFT responses."""
+    if not channels:
+        raise ValueError("No frequency channels were provided")
+
+    channels = sorted(channels, key=lambda item: item["freq_hz"])
+    cir_len = max(len(item["cir"]) for item in channels)
+    n_fft = next_fast_len(len(audio) + cir_len - 1)
+    audio_spectrum = rfft(audio, n=n_fft)
+    bin_freqs = np.fft.rfftfreq(n_fft, d=1.0 / fs_hz)
+    sample_freqs = np.asarray([item["freq_hz"] for item in channels], dtype=float)
+    responses = np.vstack([rfft(item["cir"], n=n_fft) for item in channels])
+
+    if len(channels) == 1:
+        result = irfft(audio_spectrum * responses[0], n=n_fft)
+        return result[:len(audio)]
+
+    upper = np.searchsorted(sample_freqs, bin_freqs, side="right")
+    upper = np.clip(upper, 1, len(sample_freqs) - 1)
+    lower = upper - 1
+    span = sample_freqs[upper] - sample_freqs[lower]
+    weight = np.divide(
+        bin_freqs - sample_freqs[lower], span,
+        out=np.zeros_like(bin_freqs), where=span > 0,
+    )
+    weight[bin_freqs <= sample_freqs[0]] = 0.0
+    weight[bin_freqs >= sample_freqs[-1]] = 1.0
+    bins = np.arange(len(bin_freqs))
+    response = responses[lower, bins] * (1.0 - weight) + responses[upper, bins] * weight
+
+    result = irfft(audio_spectrum * response, n=n_fft)
     return result[:len(audio)]
 
 
@@ -364,6 +428,9 @@ class BellhopRunner:
         water_depth_m: float,
         bottom: Optional[Dict] = None,
         title: str = "bellhop_run",
+        num_beams: int = 0,
+        ray_box_margin: float = 1.05,
+        max_arrivals: int = 20,
     ) -> List[Dict]:
         """
         运行一次完整的 BELLHOP 计算并返回到达结构。
@@ -397,6 +464,8 @@ class BellhopRunner:
             bottom_sound_speed_mps=bottom["sound_speed_mps"],
             bottom_density_gcc=bottom["density_gcc"],
             bottom_attenuation_db_per_lambda=bottom["attenuation_db_per_lambda"],
+            num_beams=num_beams,
+            ray_box_margin=ray_box_margin,
         )
 
         # 运行 BELLHOP (在 temp_dir 下执行)
@@ -431,7 +500,7 @@ class BellhopRunner:
                     f"{[f.name for f in all_files]}"
                 )
 
-        arrivals = parse_arrivals(arr_path)
+        arrivals = parse_arrivals(arr_path, max_arrivals=max_arrivals)
 
         # 清理临时文件
         for f in self.temp_dir.glob(f"{run_id}.*"):
@@ -457,7 +526,9 @@ class BellhopRunner:
         title: str = "bellhop_run",
         max_arrivals: int = 20,
         use_normalized: bool = True,
-    ) -> np.ndarray:
+        num_beams: int = 0,
+        ray_box_margin: float = 1.05,
+    ) -> Dict:
         """
         运行 BELLHOP → 构建 CIR (一步到位)。
         """
@@ -471,11 +542,23 @@ class BellhopRunner:
             water_depth_m=water_depth_m,
             bottom=bottom,
             title=title,
+            num_beams=num_beams,
+            ray_box_margin=ray_box_margin,
+            max_arrivals=max_arrivals,
         )
-        # 限制到达数量
-        arrivals = arrivals[:max_arrivals]
-
-        return build_cir(arrivals, audio_fs_hz, audio_duration_s, use_normalized=use_normalized)
+        if not arrivals:
+            raise NoArrivalsError("BELLHOP returned 0 arrivals")
+        delay_reference_s = min(a["delay_s"] for a in arrivals)
+        cir = build_cir(
+            arrivals, audio_fs_hz, audio_duration_s,
+            use_normalized=use_normalized,
+            delay_reference_s=delay_reference_s,
+        )
+        return {
+            "cir": cir,
+            "arrivals": arrivals,
+            "delay_reference_s": delay_reference_s,
+        }
 
     def compute_broadband_cir(
         self,
@@ -489,40 +572,56 @@ class BellhopRunner:
         audio_fs_hz: float,
         audio_duration_s: float,
         bottom: Optional[Dict] = None,
-    ) -> np.ndarray:
+        max_arrivals: int = 20,
+        num_beams: int = 0,
+        ray_box_margin: float = 1.05,
+    ) -> Dict:
         """
-        对多个频率运行 BELLHOP，合并为宽带 CIR (用于舰船噪声等宽带信号)。
+        对多个频率运行 BELLHOP，返回共享时延参考的频点 CIR。
 
-        各频点 CIR 使用原始 BELLHOP 幅度（不做单频内归一化），保留频点间
-        的相对增益差异。等权重叠加后进行单次全局归一化。
+        各频点保留原始 BELLHOP 幅度；调用方在频域插值响应，不再把不同
+        频点的 CIR 直接相加或做信道内归一化。
         """
-        cirs = []
+        frequency_results = []
+        completed_runs = 0
         for freq in freqs_hz:
             try:
-                cir = self.run_and_build_cir(
-                    depths_m=depths_m,
-                    sound_speeds_mps=sound_speeds_mps,
-                    freq_hz=freq,
-                    source_depth_m=source_depth_m,
-                    receiver_depth_m=receiver_depth_m,
-                    range_km=range_km,
-                    water_depth_m=water_depth_m,
-                    audio_fs_hz=audio_fs_hz,
-                    audio_duration_s=audio_duration_s,
-                    bottom=bottom,
-                    title=f"bb_{freq:.0f}Hz",
-                    use_normalized=False,
+                arrivals = self.run(
+                    depths_m=depths_m, sound_speeds_mps=sound_speeds_mps,
+                    freq_hz=freq, source_depth_m=source_depth_m,
+                    receiver_depth_m=receiver_depth_m, range_km=range_km,
+                    water_depth_m=water_depth_m, bottom=bottom,
+                    title=f"bb_{freq:.0f}Hz", num_beams=num_beams,
+                    ray_box_margin=ray_box_margin, max_arrivals=max_arrivals,
                 )
-                cirs.append(cir)
+                completed_runs += 1
+                if arrivals:
+                    frequency_results.append({"freq_hz": float(freq), "arrivals": arrivals})
+                else:
+                    print(f"  [WARN] BELLHOP @ {freq:.1f}Hz returned 0 arrivals")
             except Exception as e:
                 print(f"  [WARN] BELLHOP @ {freq:.1f}Hz 失败: {e}")
 
-        if not cirs:
+        if not frequency_results:
+            if completed_runs:
+                raise NoArrivalsError("所有频点均未产生有效到达")
             raise RuntimeError("所有频点的 BELLHOP 计算均失败")
 
-        # 等权重叠加（各频点 CIR 使用原始 BELLHOP 幅度，频点间增益差异已保留）
-        combined = np.sum(cirs, axis=0)
-        max_val = np.max(np.abs(combined))
-        if max_val > 0:
-            combined /= max_val
-        return combined
+        delay_reference_s = min(
+            arrival["delay_s"]
+            for item in frequency_results
+            for arrival in item["arrivals"]
+        )
+        channels = []
+        for item in frequency_results:
+            cir = build_cir(
+                item["arrivals"], audio_fs_hz, audio_duration_s,
+                use_normalized=False, delay_reference_s=delay_reference_s,
+            )
+            channels.append({**item, "cir": cir})
+
+        return {
+            "channels": channels,
+            "delay_reference_s": delay_reference_s,
+            "successful_freqs_hz": [item["freq_hz"] for item in channels],
+        }

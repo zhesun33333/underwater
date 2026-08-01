@@ -37,17 +37,19 @@ def _extract_gt(meta: dict) -> dict:
     return {"L1": l1, "L2": l2, "L3": l3}
 
 
-# L3 key → 中文名
+# L3 key → display name
 _L3_NAMES = {
-    "CW": "CW 连续波", "LFM": "LFM 线性调频", "HFM": "HFM 双曲调频",
+    "CW": "CW (Continuous Wave)", "LFM": "LFM (Linear Frequency Modulation)",
+    "HFM": "HFM (Hyperbolic Frequency Modulation)",
     "2FSK": "2FSK", "4FSK": "4FSK", "BPSK": "BPSK", "QPSK": "QPSK",
     "OFDM": "OFDM",
-    "cargo": "货船", "cruise": "邮轮", "fishing": "渔船",
-    "warship": "军舰", "underwater_target": "水下目标",
+    "cargo": "Cargo vessel", "cruise": "Cruise ship", "fishing": "Fishing vessel",
+    "warship": "Naval vessel", "underwater_target": "Underwater target",
 }
 
-_L1_NAMES = {"active": "主动信号", "passive": "被动信号"}
-_L2_NAMES = {"pulse": "探测脉冲类", "communication": "通信类", "ship_noise": "舰船辐射噪声"}
+_L1_NAMES = {"active": "Actively transmitted signal", "passive": "Passively received signal"}
+_L2_NAMES = {"pulse": "Detection pulse", "communication": "Communication signal",
+             "ship_noise": "Ship-radiated noise"}
 
 
 def _find_meta(audio_base: Path, audio_rel: str, sample_id: str) -> dict:
@@ -81,9 +83,10 @@ def _find_meta(audio_base: Path, audio_rel: str, sample_id: str) -> dict:
     return {}
 
 
-def _extract_snr(meta: dict) -> float:
+def _extract_quality(meta: dict) -> tuple:
+    """Return (tl_db, snr_db) — PulseCom has tl_db, Ship has snr_db."""
     bo = meta.get("bellhop_output", {})
-    return bo.get("snr_db") or bo.get("tl_db")
+    return (bo.get("tl_db"), bo.get("snr_db"))
 
 
 def _extract_ssp_complexity(meta: dict) -> float:
@@ -122,18 +125,20 @@ def _load_split(jsonl_path: str, audio_base: Path, label: str = "") -> list:
             if gt.get("L1") == "unknown":
                 skipped += 1
                 continue
+            tl_db, snr_db = _extract_quality(meta) if meta else (None, None)
             samples.append({
                 "id": sid,
                 "l1": gt["L1"],
                 "l2": gt["L2"],
                 "l3": gt["L3"],
-                "snr": _extract_snr(meta) if meta else None,
+                "tl_db": tl_db,
+                "snr_db": snr_db,
                 "ssp_complexity": _extract_ssp_complexity(meta) if meta else None,
             })
             if total % 50 == 0:
-                print(f"  [{label}] 已处理 {total} 行, 有效 {len(samples)} ...")
-    if skipped > 0:
-        print(f"  [{label}] 跳过 {skipped} 条 (GT 未知)")
+                print(f"  [{label}] processed {total} rows, valid {len(samples)} ...")
+        if skipped > 0:
+            print(f"  [{label}] skipped {skipped} (unknown GT)")
     return samples
 
 
@@ -176,18 +181,20 @@ def _ssp_stats(ssp_values: list) -> dict:
 def _build_section(name: str, samples: list) -> str:
     n = len(samples)
     if n == 0:
-        return f"## {name}\n\n(无样本)\n"
+        return f"## {name}\n\n(no samples)\n"
 
     l1_counts = Counter(s["l1"] for s in samples)
     l2_counts = Counter(s["l2"] for s in samples)
     l3_counts = Counter(s["l3"] for s in samples)
-    snr_info = _snr_stats([s["snr"] for s in samples])
+    # PulseCom TL (active L1) vs Ship SNR (passive L1)
+    tl_info = _snr_stats([s["tl_db"] for s in samples if s["l1"] == "active"])
+    snr_info = _snr_stats([s["snr_db"] for s in samples if s["l1"] == "passive"])
     ssp_info = _ssp_stats([s["ssp_complexity"] for s in samples])
 
     lines = [
-        f"## {name}（{n} 条样本）\n",
-        "### L1 分布",
-        "| L1 类别 | 样本数 | 占比 |",
+        f"## {name} ({n} samples)\n",
+        "### L1 Distribution",
+        "| L1 Class | Count | Ratio |",
         "|---------|--------|------|",
     ]
     for key in ["active", "passive"]:
@@ -196,8 +203,8 @@ def _build_section(name: str, samples: list) -> str:
     lines.append("")
 
     lines.extend([
-        "### L2 分布",
-        "| L2 类别 | 样本数 | 占比 |",
+        "### L2 Distribution",
+        "| L2 Class | Count | Ratio |",
         "|---------|--------|------|",
     ])
     for key in ["pulse", "communication", "ship_noise"]:
@@ -207,8 +214,8 @@ def _build_section(name: str, samples: list) -> str:
     lines.append("")
 
     lines.extend([
-        "### L3 分布",
-        "| L3 类别 | 样本数 | 占比 |",
+        "### L3 Distribution",
+        "| L3 Class | Count | Ratio |",
         "|---------|--------|------|",
     ])
     for key in sorted(l3_counts.keys()):
@@ -217,18 +224,39 @@ def _build_section(name: str, samples: list) -> str:
         lines.append(f"| {name} | {cnt} | {cnt/n:.1%} |")
     lines.append("")
 
-    if snr_info:
+    if tl_info:
+        unit = "dB"
         lines.extend([
-            "### SNR 分布",
-            "| 统计量 | 值 |",
+            "### TL Distribution (PulseCom — Transmission Loss)",
+            "| Statistic | Value |",
             "|--------|-----|",
-            f"| 有效样本 | {snr_info['count']} |",
-            f"| 最小值 | {snr_info['min']:.1f} dB |",
-            f"| 最大值 | {snr_info['max']:.1f} dB |",
-            f"| 均值 | {snr_info['mean']:.1f} dB |",
-            f"| 中位数 | {snr_info['median']:.1f} dB |",
+            f"| Valid samples | {tl_info['count']} |",
+            f"| Min | {tl_info['min']:.1f} {unit} |",
+            f"| Max | {tl_info['max']:.1f} {unit} |",
+            f"| Mean | {tl_info['mean']:.1f} {unit} |",
+            f"| Median | {tl_info['median']:.1f} {unit} |",
             "",
-            "| SNR 区间 | 样本数 | 占比 |",
+            "| TL Bin | Count | Ratio |",
+            "|----------|--------|------|",
+        ])
+        for label in ["≥15dB", "5-15dB", "-5-5dB", "≤-5dB"]:
+            cnt = tl_info["bins"].get(label, 0)
+            lines.append(f"| {label} | {cnt} | {cnt/tl_info['count']:.1%} |")
+        lines.append("")
+
+    if snr_info:
+        unit = "dB"
+        lines.extend([
+            "### SNR Distribution (Ship — Line-spectrum SNR)",
+            "| Statistic | Value |",
+            "|--------|-----|",
+            f"| Valid samples | {snr_info['count']} |",
+            f"| Min | {snr_info['min']:.1f} {unit} |",
+            f"| Max | {snr_info['max']:.1f} {unit} |",
+            f"| Mean | {snr_info['mean']:.1f} {unit} |",
+            f"| Median | {snr_info['median']:.1f} {unit} |",
+            "",
+            "| SNR Bin | Count | Ratio |",
             "|----------|--------|------|",
         ])
         for label in ["≥15dB", "5-15dB", "-5-5dB", "≤-5dB"]:
@@ -238,14 +266,14 @@ def _build_section(name: str, samples: list) -> str:
 
     if ssp_info:
         lines.extend([
-            "### SSP 复杂度分布",
-            "| 统计量 | 值 |",
+            "### SSP Complexity Distribution",
+            "| Statistic | Value |",
             "|--------|-----|",
-            f"| 有效样本 | {ssp_info['count']} |",
-            f"| 最小值 | {ssp_info['min']} |",
-            f"| 最大值 | {ssp_info['max']} |",
-            f"| 均值 | {ssp_info['mean']} |",
-            f"| 中位数 | {ssp_info['median']} |",
+            f"| Valid samples | {ssp_info['count']} |",
+            f"| Min | {ssp_info['min']} |",
+            f"| Max | {ssp_info['max']} |",
+            f"| Mean | {ssp_info['mean']} |",
+            f"| Median | {ssp_info['median']} |",
             "",
         ])
 
@@ -253,48 +281,48 @@ def _build_section(name: str, samples: list) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="数据集统计卡片生成")
-    parser.add_argument("--train", default="sft_train.jsonl", help="训练集 JSONL")
-    parser.add_argument("--val", default="sft_val.jsonl", help="验证集 JSONL")
-    parser.add_argument("--test", default="sft_test.jsonl", help="测试集 JSONL")
-    parser.add_argument("--audio-root", default="processed_audio", help="处理后音频根目录")
-    parser.add_argument("--output", default="dataset_stats.md", help="输出文件")
+    parser = argparse.ArgumentParser(description="Dataset statistics card generator")
+    parser.add_argument("--train", default="sft_train.jsonl", help="Training set JSONL")
+    parser.add_argument("--val", default="sft_val.jsonl", help="Validation set JSONL")
+    parser.add_argument("--test", default="sft_test.jsonl", help="Test set JSONL")
+    parser.add_argument("--audio-root", default="processed_audio", help="Processed audio root")
+    parser.add_argument("--output", default="dataset_stats.md", help="Output file")
     args = parser.parse_args()
 
     audio_base = Path(args.audio_root)
 
     print("=" * 50)
-    print("  数据集统计卡片生成")
+    print("  Dataset Statistics Card Generator")
     print("=" * 50)
 
     all_sections = []
     total = 0
 
-    for label, path in [("训练集", args.train), ("验证集", args.val), ("测试集", args.test)]:
+    for label, path in [("Train", args.train), ("Val", args.val), ("Test", args.test)]:
         jp = Path(path)
         if not jp.exists():
-            print(f"  [SKIP] {label}: {path} 不存在")
+            print(f"  [SKIP] {label}: {path} not found")
             continue
-        print(f"  加载 {label}: {path}")
+        print(f"  Loading {label}: {path}")
         samples = _load_split(str(jp), audio_base, label=label)
-        print(f"    有效样本: {len(samples)}")
+        print(f"    Valid samples: {len(samples)}")
         total += len(samples)
         all_sections.append(_build_section(label, samples))
 
     if total == 0:
-        print("错误: 无有效样本")
+        print("Error: no valid samples")
         return 1
 
     # 全局汇总
     summary_lines = [
-        f"# 数据集统计卡片\n",
-        f"**总样本数**: {total}\n",
+        f"# Dataset Statistics\n",
+        f"**Total samples**: {total}\n",
     ]
     report = "\n".join(summary_lines + all_sections)
 
     output_path = Path(args.output)
     output_path.write_text(report, encoding="utf-8")
-    print(f"\n  统计卡片已输出: {output_path.resolve()}")
+    print(f"\n  Stats card saved to: {output_path.resolve()}")
     print(f"{'=' * 50}")
 
     return 0

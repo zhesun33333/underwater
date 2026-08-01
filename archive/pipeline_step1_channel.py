@@ -36,6 +36,8 @@ from utils.bellhop_runner import BellhopRunner, build_cir, apply_channel
 
 warnings.filterwarnings("ignore")
 
+CHANNEL_MODEL_VERSION = "2.0"
+
 
 # ---- 配置加载 ----
 
@@ -140,7 +142,7 @@ def process_single_audio(
     output_root: Path,
     rng: np.random.Generator,
     skip_existing: bool = True,
-) -> Optional[str]:
+) -> dict:
     """
     处理单条音频: BELLHOP 信道卷积 + 保存新文件。
 
@@ -151,7 +153,7 @@ def process_single_audio(
         meta = load_jsonc(json_path)
     except Exception as e:
         print(f"  [SKIP] JSON 解析失败: {json_path} — {e}")
-        return None
+        return {"status": "failed", "reason": "json_parse"}
 
     sample_id = get_id(meta)
     wav_rel = get_wav_path(meta)
@@ -160,7 +162,7 @@ def process_single_audio(
     wav_path = dataset_root / wav_rel
     if not wav_path.exists():
         print(f"  [SKIP] WAV 不存在: {wav_path}")
-        return None
+        return {"status": "failed", "reason": "wav_missing"}
 
     # 3. 提取参数
     center_freq = get_center_freq(meta)
@@ -195,13 +197,24 @@ def process_single_audio(
                 jitter=jitter,
                 skip_existing=skip_existing,
             )
-            if result:
-                results.append(result)
+            results.append(result)
         except Exception as e:
             print(f"  [ERR] {sample_id}_ch{ch_idx}: {e}")
-            continue
+            results.append({"status": "failed", "reason": str(e)})
 
-    return sample_id if results else None
+    statuses = [result["status"] for result in results]
+    usable = sum(status in ("success", "existing") for status in statuses)
+    if statuses and all(status == "existing" for status in statuses):
+        status = "skipped"
+    elif usable == len(statuses):
+        status = "success"
+    elif usable > 0:
+        status = "partial"
+    elif statuses and all(status == "no_arrivals" for status in statuses):
+        status = "no_arrivals"
+    else:
+        status = "failed"
+    return {"id": sample_id, "status": status, "channel_statuses": statuses}
 
 
 def _apply_one_channel(
@@ -236,7 +249,12 @@ def _apply_one_channel(
     output_json_path = output_json_dir / f"{new_id}{dataset_cfg['json_ext']}"
 
     if skip_existing and output_wav_path.exists() and output_json_path.exists():
-        return {"id": new_id, "status": "skipped"}
+        try:
+            existing_meta = load_jsonc(output_json_path)
+            if existing_meta.get("channel_model_version") == CHANNEL_MODEL_VERSION:
+                return {"id": new_id, "status": "existing"}
+        except Exception:
+            pass
 
     # --- 几何参数 ---
     tx_depth = geo.get("tx_depth_m")
@@ -253,7 +271,7 @@ def _apply_one_channel(
         if range_m is not None:
             range_m *= (1.0 + rng.uniform(-jitter, jitter))
 
-    range_km = range_m / 1000.0 if range_m else rng.uniform(*channel_cfg.get("range_km_range", [0.2, 10.0]))
+    range_km = range_m / 1000.0 if range_m else rng.uniform(*channel_cfg.get("range_km_range", [10.0, 80.0]))
 
     # --- SSP 采样 ---
     min_ssp_depth = max(20.0, (tx_depth or 20) + 10, (rx_depth or 20) + 10)
@@ -270,7 +288,7 @@ def _apply_one_channel(
     if ssp_max_depth < water_depth - 1.0:
         print(f"  [SKIP] SSP 剖面太浅 (max_ssp={ssp_max_depth:.1f}m) 无法覆盖水深 "
               f"({water_depth:.1f}m): {sample_id}_ch{ch_idx}")
-        return None
+        return {"id": new_id, "status": "failed", "reason": "ssp_too_shallow"}
 
     tx_depth = tx_depth if tx_depth else rng.uniform(5.0, water_depth * 0.5)
     rx_depth = rx_depth if rx_depth else rng.uniform(5.0, water_depth * 0.5)
@@ -290,7 +308,7 @@ def _apply_one_channel(
 
     if not center_freq or center_freq <= 0:
         print(f"  [SKIP] 无有效中心频率: center_freq={center_freq}")
-        return None
+        return {"id": new_id, "status": "failed", "reason": "invalid_center_frequency"}
 
     arrivals = bellhop.run(
         depths_m=z, sound_speeds_mps=c,
@@ -299,21 +317,27 @@ def _apply_one_channel(
         range_km=range_km, water_depth_m=water_depth,
         bottom=bottom,
         title=f"{sample_id}_ch{ch_idx}",
+        num_beams=int(channel_cfg.get("num_beams", 0)),
+        ray_box_margin=float(channel_cfg.get("ray_box_margin", 1.05)),
+        max_arrivals=int(channel_cfg.get("max_arrivals", 20)),
     )
     if not arrivals:
         print(f"  [SKIP] 0 到达 (声影区): {sample_id}_ch{ch_idx}  "
               f"range={range_km:.2f}km freq={center_freq:.0f}Hz")
-        return None
+        return {"id": new_id, "status": "no_arrivals"}
 
-    cir = build_cir(arrivals, fs, audio_duration_s, use_normalized=False)
+    first_arrival_delay_s = min(a["delay_s"] for a in arrivals)
+    cir = build_cir(
+        arrivals, fs, audio_duration_s, use_normalized=False,
+        delay_reference_s=first_arrival_delay_s,
+    )
 
     # --- 卷积 ---
     convolved = apply_channel(audio, cir)
 
-    # --- RMS 传播损失 (归一化前计算，反映信道真实能量增益) ---
-    rms_orig = np.sqrt(max(1e-20, np.mean(audio ** 2)))
-    rms_conv = np.sqrt(max(1e-20, np.mean(convolved ** 2)))
-    tl_est = 20.0 * np.log10(rms_conv / rms_orig)
+    # --- CIR 能量传播损失 (∫|h|² 直接反映信道功率衰减, 不受音频 RMS 影响) ---
+    cir_energy = float(np.sum(cir ** 2))
+    tl_est = 10.0 * np.log10(max(cir_energy, 1e-40))
 
     # --- 输出峰值归一化 ---
     peak = float(np.max(np.abs(convolved)))
@@ -326,6 +350,7 @@ def _apply_one_channel(
 
     # --- 更新元数据 ---
     new_meta = dict(meta)
+    new_meta["channel_model_version"] = CHANNEL_MODEL_VERSION
     new_meta["id"] = new_id
     new_meta["wav_path"] = str(output_wav_path.relative_to(output_root))
     new_meta["audio_duration_s"] = audio_duration_s
@@ -343,6 +368,17 @@ def _apply_one_channel(
         "range_km": round(range_km, 4),
         "range_m": round(range_km * 1000, 2),
         "freq_hz": round(center_freq, 2),
+        "num_beams_requested": int(channel_cfg.get("num_beams", 0)),
+        "max_arrivals": int(channel_cfg.get("max_arrivals", 20)),
+        "ray_box_margin": float(channel_cfg.get("ray_box_margin", 1.05)),
+        "ray_box_range_km": round(max(
+            range_km * max(1.01, float(channel_cfg.get("ray_box_margin", 1.05))),
+            range_km + 0.1,
+        ), 4),
+        "ray_box_depth_m": round(max(
+            water_depth * max(1.01, float(channel_cfg.get("ray_box_margin", 1.05))),
+            water_depth + 1.0,
+        ), 2),
         "bottom": bottom,
     }
 
@@ -350,6 +386,8 @@ def _apply_one_channel(
         "arrivals": arrivals,
         "summary": summarize_arrivals(arrivals),
         "tl_db": round(tl_est, 2),
+        "absolute_first_arrival_delay_s": round(first_arrival_delay_s, 6),
+        "cir_delay_reference": "first_arrival",
         "output_normalization_gain_db": gain_db,
         "cir_duration_s": audio_duration_s,
         "cir_fs_hz": fs,
@@ -367,6 +405,7 @@ def _apply_one_channel(
 
     return {
         "id": new_id,
+        "status": "success",
         "wav": str(output_wav_path),
         "json": str(output_json_path),
         "tl_db": round(tl_est, 2),
@@ -383,15 +422,21 @@ class Progress:
         self.processed = 0
         self.succeeded = 0
         self.skipped = 0
+        self.partial = 0
+        self.no_arrivals = 0
         self.failed = 0
         self.start_time = time.time()
 
-    def update(self, success: bool, skip: bool = False):
+    def update(self, status: str):
         self.processed += 1
-        if skip:
+        if status == "skipped":
             self.skipped += 1
-        elif success:
+        elif status == "success":
             self.succeeded += 1
+        elif status == "partial":
+            self.partial += 1
+        elif status == "no_arrivals":
+            self.no_arrivals += 1
         else:
             self.failed += 1
         if self.processed % 100 == 0 or self.processed == self.total:
@@ -399,7 +444,8 @@ class Progress:
             rate = self.processed / elapsed if elapsed > 0 else 0
             eta = (self.total - self.processed) / rate if rate > 0 else 0
             print(f"  [{self.processed}/{self.total}] "
-                  f"ok={self.succeeded} skip={self.skipped} fail={self.failed} "
+                  f"ok={self.succeeded} existing={self.skipped} partial={self.partial} "
+                  f"no_arr={self.no_arrivals} err={self.failed} "
                   f"| {rate:.1f}/s | ETA {eta:.0f}s")
 
 
@@ -471,7 +517,7 @@ def main():
             rng=rng,
             skip_existing=skip_existing,
         )
-        progress.update(success=result is not None)
+        progress.update(result["status"])
 
     # 汇总
     elapsed = time.time() - progress.start_time
@@ -480,6 +526,8 @@ def main():
     print(f"  总数: {progress.total}")
     print(f"  成功: {progress.succeeded}")
     print(f"  跳过: {progress.skipped}")
+    print(f"  部分成功: {progress.partial}")
+    print(f"  无到达: {progress.no_arrivals}")
     print(f"  失败: {progress.failed}")
     print(f"  耗时: {elapsed:.1f}s")
     print(f"  输出: {output_root.resolve()}")
