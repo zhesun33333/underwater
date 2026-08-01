@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils.json_parser import (
     load_jsonc, extract_labels, get_wav_path, get_id,
 )
+from utils.split_utils import stratified_group_split
 # ============================================================
 # 模板定义
 # ============================================================
@@ -235,7 +236,6 @@ def main():
     qa_output_dir = Path(paths["qa_output"])
     qa_output_dir.mkdir(parents=True, exist_ok=True)
     seed = limits.get("random_seed", 42)
-    rng = random.Random(seed)
     json_files = find_processed_ship_jsons(
         processed_root=processed_root,
         dataset_name=dataset_cfg["name"],
@@ -248,19 +248,17 @@ def main():
         json_files = json_files[:max_samples]
     # 数据集分裂: 70/15/15
     n = len(json_files)
-    rng.shuffle(json_files)
-    train_end = int(n * 0.70)
-    val_end = train_end + int(n * 0.15)
-    splits = {
-        "train": json_files[:train_end],
-        "val":   json_files[train_end:val_end],
-        "test":  json_files[val_end:],
-    }
+    splits = stratified_group_split(
+        json_files,
+        label_getter=lambda path: extract_labels(load_jsonc(path))["L3"],
+        seed=seed,
+    )
 
     print(f"总样本数: {n}")
     print(f"  train: {len(splits['train'])}  条")
     print(f"  val:   {len(splits['val'])}  条")
     print(f"  test:  {len(splits['test'])}  条")
+    print("  split policy: L3-stratified source groups (channel-safe)")
     print()
 
     start_time = time.time()

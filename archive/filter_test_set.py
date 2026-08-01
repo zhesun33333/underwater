@@ -28,6 +28,23 @@ L3_NAMES = {
 }
 
 
+def select_quality_tier(pool: list, tier: str) -> list:
+    """Select a dynamic quality tertile; larger scores mean better quality."""
+    ranked = sorted(pool, key=lambda item: item[1])
+    if tier == "all" or len(ranked) < 3:
+        return ranked
+
+    low_end = len(ranked) // 3
+    high_start = (2 * len(ranked)) // 3
+    if tier == "low":
+        return ranked[:low_end]
+    if tier == "mid":
+        return ranked[low_end:high_start]
+    if tier == "high":
+        return ranked[high_start:]
+    raise ValueError(f"unknown quality tier: {tier}")
+
+
 def find_meta(audio_base: Path, audio_rel: str, sample_id: str) -> Optional[dict]:
     """定位 processed JSON 元数据 (与 dataset_stats.py 一致)。"""
     parts = Path(audio_rel).parts
@@ -108,10 +125,12 @@ def main():
     parser.add_argument("--output", default="dataset/sft_test_highquality.jsonl")
     parser.add_argument("--n-per-class", type=int, default=200,
                         help="Max samples per L3 class (default: 200)")
-    parser.add_argument("--tl-min", type=float, default=-15.0,
-                        help="PulseCom min TL threshold in dB (default: -15)")
-    parser.add_argument("--snr-min", type=float, default=-18.0,
-                        help="Ship min SNR threshold in dB (default: -18)")
+    parser.add_argument("--quality-tier", choices=("high", "mid", "low", "all"),
+                        default="high", help="Dynamic per-class quality tertile (default: high)")
+    parser.add_argument("--tl-min", type=float, default=None,
+                        help="Optional PulseCom raw channel-gain floor in dB")
+    parser.add_argument("--snr-min", type=float, default=None,
+                        help="Optional Ship SNR floor in dB")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -158,10 +177,12 @@ def main():
                 continue
 
             # 质量过滤
-            if cat in ("pulse", "communication") and quality < args.tl_min:
+            if (cat in ("pulse", "communication") and args.tl_min is not None
+                    and quality < args.tl_min):
                 skipped_low_quality += 1
                 continue
-            if cat == "radiated_noise" and quality < args.snr_min:
+            if (cat == "radiated_noise" and args.snr_min is not None
+                    and quality < args.snr_min):
                 skipped_low_quality += 1
                 continue
 
@@ -177,25 +198,26 @@ def main():
     # ---- 第二遍: 每类按质量降序排序, 取前 N ----
     rng = random.Random(args.seed)
     selected = []
-    stats_lines = []
 
-    print(f"\nFilter results (max {args.n_per_class} per class):")
-    print(f"{'L3 Class':<20} {'Avail':>6} {'Picked':>6} {'Quality Range':>20}")
-    print("-" * 56)
+    print(f"\nFilter results ({args.quality_tier} tertile, max {args.n_per_class} per class):")
+    print(f"{'L3 Class':<20} {'Avail':>6} {'Tier':>6} {'Picked':>6} {'Quality Range':>20}")
+    print("-" * 64)
 
     for l3_key in sorted(by_l3.keys()):
         pool = by_l3[l3_key]
         # 按质量降序排 (质量越高越好)
-        pool.sort(key=lambda x: x[1], reverse=True)
+        tier_pool = select_quality_tier(pool, args.quality_tier)
+        tier_pool.sort(key=lambda x: x[1], reverse=True)
 
         # 取前 N, 但留一点随机性: 从前 2*N 中随机选 N
-        top_n = min(args.n_per_class * 2, len(pool))
-        candidates = pool[:top_n]
+        top_n = min(args.n_per_class * 2, len(tier_pool))
+        candidates = tier_pool[:top_n]
         chosen = rng.sample(candidates, min(args.n_per_class, len(candidates)))
 
         qualities = [c[1] for c in chosen]
         name = L3_NAMES.get(l3_key, l3_key)
-        print(f"{name:<20} {len(pool):>6} {len(chosen):>6}  {min(qualities):.1f} ~ {max(qualities):.1f}")
+        print(f"{name:<20} {len(pool):>6} {len(tier_pool):>6} {len(chosen):>6}  "
+              f"{min(qualities):.1f} ~ {max(qualities):.1f}")
 
         for item, _, gt, meta_out in chosen:
             out_record = {k: v for k, v in item.items() if k != "_meta"}
@@ -203,8 +225,10 @@ def main():
             out_record["_meta"] = meta_out
             selected.append(out_record)
 
-    print("-" * 56)
-    print(f"{'Total':<20} {sum(len(v) for v in by_l3.values()):>6} {len(selected):>6}")
+    print("-" * 64)
+    print(f"{'Total':<20} {sum(len(v) for v in by_l3.values()):>6} "
+          f"{sum(len(select_quality_tier(v, args.quality_tier)) for v in by_l3.values()):>6} "
+          f"{len(selected):>6}")
 
     # ---- 输出 ----
     rng.shuffle(selected)
