@@ -2,10 +2,11 @@
 BELLHOP 调用封装
 .env 生成 → bellhop.exe 执行 → .arr 解析 → CIR 构建 → 卷积
 """
+import hashlib
 import os
 import struct
 import subprocess
-import time
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -24,6 +25,73 @@ except ImportError:
 
 class NoArrivalsError(RuntimeError):
     """BELLHOP completed, but no receiver arrivals were produced."""
+
+
+class InvalidEnvironmentError(RuntimeError):
+    """BELLHOP rejected a generated environment file."""
+
+
+class BellhopExecutionError(RuntimeError):
+    """BELLHOP itself could not run or produced an unusable output format."""
+
+
+def make_channel_rng(random_seed: int, *identity_parts) -> np.random.Generator:
+    """Create a stable RNG for one sample/channel, independent of resume order."""
+    identity = "\0".join([str(random_seed), *(str(part) for part in identity_parts)])
+    digest = hashlib.blake2b(identity.encode("utf-8"), digest_size=8).digest()
+    return np.random.default_rng(int.from_bytes(digest, byteorder="little"))
+
+
+def _finite_scalar(name: str, value: float, *, positive: bool = False) -> float:
+    value = float(value)
+    if not np.isfinite(value):
+        raise ValueError(f"{name} must be finite, got {value!r}")
+    if positive and value <= 0.0:
+        raise ValueError(f"{name} must be positive, got {value!r}")
+    return value
+
+
+def _prepare_ssp_profile(
+    depths_m: np.ndarray,
+    sound_speeds_mps: np.ndarray,
+    water_depth_m: float,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Validate an SSP and terminate it at exactly the formatted bottom depth."""
+    water_depth = _finite_scalar("water_depth_m", water_depth_m, positive=True)
+    depths = np.asarray(depths_m, dtype=np.float64).reshape(-1)
+    speeds = np.asarray(sound_speeds_mps, dtype=np.float64).reshape(-1)
+    if depths.size != speeds.size:
+        raise ValueError(
+            f"SSP depth/speed length mismatch: {depths.size} != {speeds.size}"
+        )
+
+    finite = np.isfinite(depths) & np.isfinite(speeds)
+    depths = depths[finite]
+    speeds = speeds[finite]
+    if depths.size < 2:
+        raise ValueError("SSP must contain at least two finite points")
+    if np.any(speeds <= 0.0):
+        raise ValueError("SSP sound speeds must be positive")
+
+    order = np.argsort(depths, kind="stable")
+    depths = depths[order]
+    speeds = speeds[order]
+    unique = np.concatenate(([True], np.diff(depths) > 0.0))
+    depths = depths[unique]
+    speeds = speeds[unique]
+    if depths.size < 2 or water_depth > depths[-1] + 1e-6:
+        raise ValueError(
+            f"SSP max depth {depths[-1]:.6f}m does not cover water depth "
+            f"{water_depth:.6f}m"
+        )
+
+    bottom_speed = float(np.interp(water_depth, depths, speeds))
+    above_bottom = depths < water_depth
+    trimmed_depths = np.append(depths[above_bottom], water_depth)
+    trimmed_speeds = np.append(speeds[above_bottom], bottom_speed)
+    if trimmed_depths.size < 2 or np.any(np.diff(trimmed_depths) <= 0.0):
+        raise ValueError("SSP must have at least two strictly increasing depths")
+    return trimmed_depths, trimmed_speeds, water_depth
 
 
 def resolve_num_beams(
@@ -77,46 +145,54 @@ def generate_env(
     - 单发射深度 / 单接收深度 / 单水平距离
     - 'A' 选项输出到达文件 (.arr)
     """
+    freq_hz = _finite_scalar("freq_hz", freq_hz, positive=True)
+    source_depth_m = _finite_scalar("source_depth_m", source_depth_m, positive=True)
+    receiver_depth_m = _finite_scalar("receiver_depth_m", receiver_depth_m, positive=True)
+    range_km = _finite_scalar("range_km", range_km, positive=True)
+    bottom_sound_speed_mps = _finite_scalar(
+        "bottom_sound_speed_mps", bottom_sound_speed_mps, positive=True,
+    )
+    bottom_density_gcc = _finite_scalar(
+        "bottom_density_gcc", bottom_density_gcc, positive=True,
+    )
+    bottom_attenuation_db_per_lambda = _finite_scalar(
+        "bottom_attenuation_db_per_lambda", bottom_attenuation_db_per_lambda,
+    )
+    z_trim, c_trim, water_depth_m = _prepare_ssp_profile(
+        depths_m, sound_speeds_mps, water_depth_m,
+    )
+    if source_depth_m >= water_depth_m or receiver_depth_m >= water_depth_m:
+        raise ValueError(
+            "source and receiver depths must be strictly shallower than the bottom"
+        )
+
     lines = []
     lines.append(f"'{title}'")
-    lines.append(f"{freq_hz:.2f}")
+    lines.append(f"{freq_hz:.8E}")
     lines.append("1")
     lines.append("'CVF'")
 
-    # 裁剪 SSP 到水底深度以上，避免 BELLHOP 读到超深点报错
-    mask = depths_m <= water_depth_m + 1e-6
-    if mask.sum() < 2:
-        raise ValueError(f"SSP 在水深 {water_depth_m:.1f}m 以上点数不足 ({mask.sum()})，无法运行 BELLHOP")
-    z_trim = depths_m[mask]
-    c_trim = sound_speeds_mps[mask]
-    # 确保最后一个点在水底深度
-    if abs(z_trim[-1] - water_depth_m) > 0.01:
-        # 线性插值水底声速
-        c_bottom = np.interp(water_depth_m, depths_m, sound_speeds_mps)
-        z_trim = np.append(z_trim, water_depth_m)
-        c_trim = np.append(c_trim, c_bottom)
-
     # Bellhop 读取顺序：NPts, Sigma, BottomDepth
-    lines.append(f"{len(z_trim)}  1.0  {water_depth_m:.2f}")
+    lines.append(f"{len(z_trim)}  1.00000000E+00  {water_depth_m:.8E}")
 
     # SSP 记录：每行 depth sound_speed /
     for z, c in zip(z_trim, c_trim):
-        lines.append(f"{z:.2f}  {c:.2f}  /")
+        lines.append(f"{z:.8E}  {c:.8E}  /")
 
     # 底边界条件：BC + Sigma
     lines.append("'A'  0.0")
 
     # 底部半空间参数：depth, cp, cs, rho, alphaP, alphaS
-    lines.append(f"{water_depth_m:.2f}  {bottom_sound_speed_mps:.2f}  0.0  "
-                 f"{bottom_density_gcc:.3f}  {bottom_attenuation_db_per_lambda:.1f}  0.0 /")
+    lines.append(f"{water_depth_m:.8E}  {bottom_sound_speed_mps:.8E}  0.0  "
+                 f"{bottom_density_gcc:.8E}  {bottom_attenuation_db_per_lambda:.8E}  0.0 /")
 
     # 源/接收/距离
     lines.append("1")
-    lines.append(f"{source_depth_m:.2f} /")
+    lines.append(f"{source_depth_m:.8E} /")
     lines.append("1")
-    lines.append(f"{receiver_depth_m:.2f} /")
+    lines.append(f"{receiver_depth_m:.8E} /")
     lines.append("1")
-    lines.append(f"{range_km:.4f} /")
+    lines.append(f"{range_km:.8E} /")
 
     # 运行类型与束参数
     lines.append("'A'")
@@ -163,11 +239,16 @@ def parse_arrivals(arr_path: Path, max_arrivals: int = 20) -> List[Dict]:
 
     raw = arr_path.read_bytes()
 
+    # ASCII files may legitimately contain zero arrivals. Only use the text
+    # parser when the payload itself is text; otherwise try the binary layouts.
     try:
+        raw.decode("ascii")
+        is_text = b"\x00" not in raw
+    except UnicodeDecodeError:
+        is_text = False
+    if is_text:
         arrivals = _parse_arr_text(raw)
         return _postprocess_arrivals(arrivals, max_arrivals)
-    except Exception:
-        pass
 
     # 文本解析失败，尝试不同 endianness 的二进制解析
     for endian in ('<', '>'):
@@ -183,11 +264,24 @@ def parse_arrivals(arr_path: Path, max_arrivals: int = 20) -> List[Dict]:
 
 def _postprocess_arrivals(arrivals: List[Dict], max_arrivals: int) -> List[Dict]:
     """统一整理到达结构：按强度排序并归一化。"""
+    max_arrivals = int(max_arrivals)
+    if max_arrivals <= 0:
+        raise ValueError(f"max_arrivals must be positive, got {max_arrivals}")
+    arrivals = [
+        arrival for arrival in arrivals
+        if np.isfinite(arrival.get("delay_s", np.nan))
+        and arrival.get("delay_s", -1.0) >= 0.0
+        and np.isfinite(arrival.get("amplitude_linear", np.nan))
+        and arrival.get("amplitude_linear", 0.0) > 0.0
+    ]
     if not arrivals:
         return []
 
+    first_arrival = min(arrivals, key=lambda a: a["delay_s"])
     arrivals.sort(key=lambda a: a["amplitude_linear"], reverse=True)
     arrivals = arrivals[:max_arrivals]
+    if not any(arrival is first_arrival for arrival in arrivals):
+        arrivals[-1] = first_arrival
     arrivals.sort(key=lambda a: a["delay_s"])
 
     if arrivals:
@@ -333,7 +427,10 @@ def build_cir(
     返回:
         cir: 1D numpy array, dtype=float64
     """
-    n_samples = int(round(duration_s * fs_hz))
+    fs_hz = _finite_scalar("fs_hz", fs_hz, positive=True)
+    duration_s = _finite_scalar("duration_s", duration_s, positive=True)
+    delay_reference_s = _finite_scalar("delay_reference_s", delay_reference_s)
+    n_samples = max(1, int(round(duration_s * fs_hz)))
     cir = np.zeros(n_samples, dtype=np.float64)
 
     for a in arrivals:
@@ -365,7 +462,8 @@ def _add_fractional_delay(cir: np.ndarray, delay_s: float, amplitude: float, fs_
     frac = center - base_idx
 
     half_len = 16
-    t = (np.arange(-half_len, half_len + 1) + frac)
+    # At output index base_idx + k, the ideal sampled impulse is sinc(k-frac).
+    t = np.arange(-half_len, half_len + 1) - frac
     sinc_vals = np.sinc(t)
     window = kaiser(2 * half_len + 1, beta=6.0)
     kernel = sinc_vals * window
@@ -380,6 +478,12 @@ def apply_channel(audio: np.ndarray, cir: np.ndarray) -> np.ndarray:
     """
     音频与 CIR 卷积，输出与输入等长。
     """
+    audio = np.asarray(audio, dtype=np.float64)
+    cir = np.asarray(cir, dtype=np.float64)
+    if audio.ndim != 1 or audio.size == 0 or not np.all(np.isfinite(audio)):
+        raise ValueError("Audio must be a non-empty finite 1D array")
+    if cir.ndim != 1 or not np.all(np.isfinite(cir)):
+        raise ValueError("CIR must be a finite 1D array")
     if len(cir) == 0 or not np.any(np.abs(cir) > 0):
         raise ValueError("CIR is empty; refusing to return unprocessed audio")
 
@@ -393,10 +497,19 @@ def apply_frequency_dependent_channel(
     fs_hz: float,
 ) -> np.ndarray:
     """Apply frequency-dependent CIRs by interpolating their FFT responses."""
+    audio = np.asarray(audio, dtype=np.float64)
+    fs_hz = _finite_scalar("fs_hz", fs_hz, positive=True)
+    if audio.ndim != 1 or audio.size == 0 or not np.all(np.isfinite(audio)):
+        raise ValueError("Audio must be a non-empty finite 1D array")
     if not channels:
         raise ValueError("No frequency channels were provided")
 
     channels = sorted(channels, key=lambda item: item["freq_hz"])
+    for item in channels:
+        _finite_scalar("channel frequency", item["freq_hz"], positive=True)
+        cir = np.asarray(item["cir"], dtype=np.float64)
+        if cir.ndim != 1 or cir.size == 0 or not np.all(np.isfinite(cir)):
+            raise ValueError("Every frequency channel must contain a finite 1D CIR")
     cir_len = max(len(item["cir"]) for item in channels)
     n_fft = next_fast_len(len(audio) + cir_len - 1)
     audio_spectrum = rfft(audio, n=n_fft)
@@ -469,17 +582,16 @@ class BellhopRunner:
 
         步骤：生成 .env → 运行 bellhop.exe → 解析 .arr
         """
-        if bottom is None:
-            bottom = {
-                "type": "silt",
-                "sound_speed_mps": 1520.0,
-                "density_gcc": 1.4,
-                "attenuation_db_per_lambda": 3.0,
-            }
+        bottom = {
+            "type": "silt",
+            "sound_speed_mps": 1520.0,
+            "density_gcc": 1.4,
+            "attenuation_db_per_lambda": 3.0,
+            **(bottom or {}),
+        }
 
-        # 使用时间戳避免文件名冲突
-        ts = int(time.time() * 1_000_000) % 100_000_000
-        run_id = f"bh_{ts}"
+        # UUID keeps concurrent processes from sharing BELLHOP scratch files.
+        run_id = f"bh_{uuid.uuid4().hex}"
         env_path = self.temp_dir / f"{run_id}.env"
 
         effective_num_beams = resolve_num_beams(
@@ -512,26 +624,80 @@ class BellhopRunner:
                 timeout=60,
             )
             if result.returncode != 0:
-                stderr = result.stderr[:500] if result.stderr else ""
-                raise RuntimeError(
-                    f"BELLHOP 运行失败 (exit={result.returncode}): {stderr}"
+                details = (result.stderr or result.stdout or "")[:1000]
+                if "Bad real number" in details or "End of file" in details:
+                    raise InvalidEnvironmentError(
+                        "BELLHOP rejected the generated .env "
+                        f"(freq={freq_hz:.1f}Hz, water={water_depth_m:.6f}m, "
+                        f"range={range_km:.6f}km, ssp_points={len(depths_m)}): {details}"
+                    )
+                raise BellhopExecutionError(
+                    f"BELLHOP 运行失败 (exit={result.returncode}): {details}"
                 )
             arr_path = self.temp_dir / f"{run_id}.arr"
             if not arr_path.exists():
                 run_files = [f.name for f in self.temp_dir.glob(f"{run_id}.*")]
-                raise FileNotFoundError(
+                raise BellhopExecutionError(
                     f"BELLHOP 未生成本次 .arr 文件: {arr_path.name}; "
                     f"本次临时文件: {run_files}"
                 )
-            return parse_arrivals(arr_path, max_arrivals=max_arrivals)
+            try:
+                return parse_arrivals(arr_path, max_arrivals=max_arrivals)
+            except Exception as e:
+                raise BellhopExecutionError(f"BELLHOP .arr 解析失败: {e}") from e
+        except OSError as e:
+            raise BellhopExecutionError(f"无法启动 BELLHOP: {e}") from e
         except subprocess.TimeoutExpired as e:
-            raise RuntimeError("BELLHOP 运行超时 (>60s)") from e
+            raise BellhopExecutionError("BELLHOP 运行超时 (>60s)") from e
         finally:
             for f in self.temp_dir.glob(f"{run_id}.*"):
                 try:
                     f.unlink()
                 except OSError:
                     pass
+
+    def run_with_beam_retry(
+        self,
+        *,
+        min_beams: int = 1000,
+        beams_per_km: float = 100.0,
+        max_beams: int = 8000,
+        **run_kwargs,
+    ) -> Dict:
+        """Run once, then recheck a zero-arrival result with more beams."""
+        range_km = float(run_kwargs["range_km"])
+        beam_setting = run_kwargs.get("num_beams", "adaptive")
+        initial_beams = resolve_num_beams(
+            beam_setting, range_km, min_beams, beams_per_km, max_beams,
+        )
+        arrivals = self.run(
+            **run_kwargs,
+            min_beams=min_beams,
+            beams_per_km=beams_per_km,
+            max_beams=max_beams,
+        )
+        effective_beams = initial_beams
+        retried = False
+
+        # A user-selected fixed/automatic count is respected. Adaptive mode gets
+        # one denser check so sparse ray sampling is not mislabeled as no path.
+        if (not arrivals and isinstance(beam_setting, str)
+                and beam_setting.strip().lower() == "adaptive"
+                and initial_beams < max_beams):
+            effective_beams = min(max_beams, max(4000, initial_beams * 2))
+            retried = True
+            arrivals = self.run(
+                **{**run_kwargs, "num_beams": effective_beams},
+                min_beams=min_beams,
+                beams_per_km=beams_per_km,
+                max_beams=max_beams,
+            )
+
+        return {
+            "arrivals": arrivals,
+            "num_beams_effective": effective_beams,
+            "beam_retry": retried,
+        }
 
     def run_and_build_cir(
         self,
@@ -557,7 +723,7 @@ class BellhopRunner:
         """
         运行 BELLHOP → 构建 CIR (一步到位)。
         """
-        arrivals = self.run(
+        run_result = self.run_with_beam_retry(
             depths_m=depths_m,
             sound_speeds_mps=sound_speeds_mps,
             freq_hz=freq_hz,
@@ -574,8 +740,9 @@ class BellhopRunner:
             beams_per_km=beams_per_km,
             max_beams=max_beams,
         )
+        arrivals = run_result["arrivals"]
         if not arrivals:
-            raise NoArrivalsError("BELLHOP returned 0 arrivals")
+            raise NoArrivalsError("BELLHOP returned 0 arrivals after beam check")
         delay_reference_s = min(a["delay_s"] for a in arrivals)
         cir = build_cir(
             arrivals, audio_fs_hz, audio_duration_s,
@@ -586,6 +753,8 @@ class BellhopRunner:
             "cir": cir,
             "arrivals": arrivals,
             "delay_reference_s": delay_reference_s,
+            "num_beams_effective": run_result["num_beams_effective"],
+            "beam_retry": run_result["beam_retry"],
         }
 
     def compute_broadband_cir(
@@ -617,7 +786,7 @@ class BellhopRunner:
         completed_runs = 0
         for freq in freqs_hz:
             try:
-                arrivals = self.run(
+                run_result = self.run_with_beam_retry(
                     depths_m=depths_m, sound_speeds_mps=sound_speeds_mps,
                     freq_hz=freq, source_depth_m=source_depth_m,
                     receiver_depth_m=receiver_depth_m, range_km=range_km,
@@ -627,11 +796,22 @@ class BellhopRunner:
                     min_beams=min_beams, beams_per_km=beams_per_km,
                     max_beams=max_beams,
                 )
+                arrivals = run_result["arrivals"]
                 completed_runs += 1
                 if arrivals:
-                    frequency_results.append({"freq_hz": float(freq), "arrivals": arrivals})
+                    frequency_results.append({
+                        "freq_hz": float(freq),
+                        "arrivals": arrivals,
+                        "num_beams_effective": run_result["num_beams_effective"],
+                        "beam_retry": run_result["beam_retry"],
+                    })
                 else:
-                    print(f"  [WARN] BELLHOP @ {freq:.1f}Hz returned 0 arrivals")
+                    print(f"  [WARN] BELLHOP @ {freq:.1f}Hz returned 0 arrivals after beam check")
+            except InvalidEnvironmentError as e:
+                print(f"  [WARN] BELLHOP environment invalid @ {freq:.1f}Hz: {e}")
+                raise
+            except BellhopExecutionError:
+                raise
             except Exception as e:
                 print(f"  [WARN] BELLHOP @ {freq:.1f}Hz 失败: {e}")
 
@@ -657,4 +837,10 @@ class BellhopRunner:
             "channels": channels,
             "delay_reference_s": delay_reference_s,
             "successful_freqs_hz": [item["freq_hz"] for item in channels],
+            "num_beams_effective": max(
+                item["num_beams_effective"] for item in channels
+            ),
+            "beam_retry_frequencies_hz": [
+                item["freq_hz"] for item in channels if item["beam_retry"]
+            ],
         }

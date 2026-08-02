@@ -60,10 +60,21 @@ class SSPSampler:
         z = z[valid]
         c = c[valid]
 
+        if z.size < 2:
+            raise ValueError(f"SSP profile {index} has fewer than two finite points")
+        if np.any(c <= 0.0):
+            raise ValueError(f"SSP profile {index} contains non-positive sound speed")
+
         # 按深度升序
         order = np.argsort(z)
         z = z[order]
         c = c[order]
+
+        unique = np.concatenate(([True], np.diff(z) > 0.0))
+        z = z[unique]
+        c = c[unique]
+        if z.size < 2:
+            raise ValueError(f"SSP profile {index} has fewer than two unique depths")
 
         info = {
             "profile_index": int(index),

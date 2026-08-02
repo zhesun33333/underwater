@@ -33,12 +33,13 @@ from utils.json_parser import (
 )
 from utils.ssp_sampler import SSPSampler
 from utils.bellhop_runner import (
-    BellhopRunner, apply_channel, build_cir, resolve_num_beams,
+    BellhopExecutionError, BellhopRunner, InvalidEnvironmentError,
+    apply_channel, build_cir, make_channel_rng,
 )
 
 warnings.filterwarnings("ignore")
 
-CHANNEL_MODEL_VERSION = "2.1"
+CHANNEL_MODEL_VERSION = "2.2"
 
 
 # ---- 配置加载 ----
@@ -84,26 +85,31 @@ def find_json_files(dataset_root: Path, json_subdir: str, json_ext: str) -> List
 def read_audio(wav_path: Path) -> Tuple[int, np.ndarray]:
     """读取 WAV，返回 (sample_rate, samples)。samples 转为 float64 [-1, 1]。"""
     sr, data = wavfile.read(wav_path)
-    if data.dtype == np.int16:
-        data = data.astype(np.float64) / 32768.0
-    elif data.dtype == np.int32:
-        data = data.astype(np.float64) / 2147483648.0
-    elif data.dtype == np.float32:
+    if data.dtype == np.uint8:
+        data = (data.astype(np.float64) - 128.0) / 128.0
+    elif np.issubdtype(data.dtype, np.signedinteger):
+        scale = float(max(abs(np.iinfo(data.dtype).min), np.iinfo(data.dtype).max))
+        data = data.astype(np.float64) / scale
+    elif np.issubdtype(data.dtype, np.floating):
         data = data.astype(np.float64)
-    elif data.dtype == np.float64:
-        pass
     else:
-        data = data.astype(np.float64)
-        mx = np.max(np.abs(data))
-        if mx > 0:
-            data /= mx
+        raise ValueError(f"不支持的 WAV 数据类型: {data.dtype}")
     if data.ndim > 1:
         data = data[:, 0]  # 取第一声道
-    return sr, data
+    if data.size == 0:
+        raise ValueError(f"WAV 为空: {wav_path}")
+    if not np.all(np.isfinite(data)):
+        raise ValueError(f"WAV 包含 NaN/Inf: {wav_path}")
+    if not np.any(np.abs(data) > 0.0):
+        raise ValueError(f"WAV 全为零: {wav_path}")
+    return int(sr), data
 
 
 def write_audio(wav_path: Path, sr: int, data: np.ndarray, bits: int = 32):
     """写入 WAV 文件。data 为 float64 [-1, 1]。"""
+    if not np.all(np.isfinite(data)):
+        raise ValueError("拒绝写入包含 NaN/Inf 的音频")
+    data = np.clip(data, -1.0, 1.0)
     wav_path.parent.mkdir(parents=True, exist_ok=True)
     if bits == 32:
         int_data = (data * 2147483647.0).astype(np.int32)
@@ -128,7 +134,7 @@ def summarize_arrivals(arrivals: List[Dict]) -> dict:
         "min_delay_s": round(float(min(delays)), 6),
         "mean_delay_s": round(float(np.mean(delays)), 6),
         "max_amplitude_db": round(float(max(amps_db)), 2),
-        "has_shadow_zone": len(arrivals) <= 2,
+        "sparse_arrivals": len(arrivals) <= 2,
     }
 
 
@@ -142,7 +148,7 @@ def process_single_audio(
     ssp_sampler: SSPSampler,
     bellhop: BellhopRunner,
     output_root: Path,
-    rng: np.random.Generator,
+    random_seed: int,
     skip_existing: bool = True,
 ) -> dict:
     """
@@ -153,11 +159,15 @@ def process_single_audio(
     # 1. 加载元数据
     try:
         meta = load_jsonc(json_path)
+        if not isinstance(meta, dict):
+            raise TypeError("JSON 顶层必须是对象")
     except Exception as e:
         print(f"  [SKIP] JSON 解析失败: {json_path} — {e}")
         return {"status": "failed", "reason": "json_parse"}
 
     sample_id = get_id(meta)
+    if not sample_id or sample_id == "unknown":
+        sample_id = json_path.stem
     wav_rel = get_wav_path(meta)
 
     # 2. 查找 WAV
@@ -169,17 +179,23 @@ def process_single_audio(
     # 3. 提取参数
     center_freq = get_center_freq(meta)
     geo = get_geometry(meta)
-    audio_duration_s = float(meta.get("audio_duration_s", 30))
-
     # 4. 对每条音频生成 N 个不同信道的版本
-    n_channels = channel_cfg.get("num_channels_per_audio", 2)
+    n_channels = int(channel_cfg.get("num_channels_per_audio", 2))
+    if n_channels <= 0:
+        return {"id": sample_id, "status": "failed", "reason": "invalid_channel_count"}
     if channel_cfg.get("use_json_geometry", True):
-        jitter = channel_cfg.get("geometry_jitter_pct", 0.1)
+        jitter = float(channel_cfg.get("geometry_jitter_pct", 0.1))
+        if not np.isfinite(jitter) or not 0.0 <= jitter < 1.0:
+            return {"id": sample_id, "status": "failed", "reason": "invalid_geometry_jitter"}
     else:
         jitter = None
 
     results = []
     for ch_idx in range(n_channels):
+        channel_rng = make_channel_rng(
+            random_seed, "pulsecom", meta.get("signal_type", "UNKNOWN"),
+            sample_id, ch_idx,
+        )
         try:
             result = _apply_one_channel(
                 meta=meta,
@@ -194,12 +210,13 @@ def process_single_audio(
                 output_root=output_root,
                 center_freq=center_freq,
                 geo=geo,
-                audio_duration_s=audio_duration_s,
-                rng=rng,
+                rng=channel_rng,
                 jitter=jitter,
                 skip_existing=skip_existing,
             )
             results.append(result)
+        except (BellhopExecutionError, InvalidEnvironmentError):
+            raise
         except Exception as e:
             print(f"  [ERR] {sample_id}_ch{ch_idx}: {e}")
             results.append({"status": "failed", "reason": str(e)})
@@ -232,7 +249,6 @@ def _apply_one_channel(
     output_root: Path,
     center_freq: Optional[float],
     geo: dict,
-    audio_duration_s: float,
     rng: np.random.Generator,
     jitter: Optional[float],
     skip_existing: bool,
@@ -253,7 +269,14 @@ def _apply_one_channel(
     if skip_existing and output_wav_path.exists() and output_json_path.exists():
         try:
             existing_meta = load_jsonc(output_json_path)
-            if existing_meta.get("channel_model_version") == CHANNEL_MODEL_VERSION:
+            existing_freq = (existing_meta.get("bellhop_env") or {}).get("freq_hz")
+            frequency_matches = (
+                center_freq is not None
+                and existing_freq is not None
+                and np.isclose(float(existing_freq), float(center_freq), rtol=0.0, atol=0.01)
+            )
+            if (existing_meta.get("channel_model_version") == CHANNEL_MODEL_VERSION
+                    and frequency_matches):
                 return {"id": new_id, "status": "existing"}
         except Exception:
             pass
@@ -273,10 +296,14 @@ def _apply_one_channel(
         if range_m is not None:
             range_m *= (1.0 + rng.uniform(-jitter, jitter))
 
-    range_km = range_m / 1000.0 if range_m else rng.uniform(*channel_cfg.get("range_km_range", [10.0, 80.0]))
+    range_km = (range_m / 1000.0 if range_m is not None
+                else rng.uniform(*channel_cfg.get("range_km_range", [10.0, 80.0])))
 
     # --- SSP 采样 ---
-    min_ssp_depth = max(20.0, (tx_depth or 20) + 10, (rx_depth or 20) + 10)
+    min_ssp_depth = max(
+        20.0, (tx_depth or 20) + 10, (rx_depth or 20) + 10,
+        water_depth or 0.0,
+    )
     z, c, ssp_info = ssp_sampler.sample_matching_depth(min_depth_m=min_ssp_depth, rng=rng)
 
     if water_depth is None:
@@ -284,10 +311,13 @@ def _apply_one_channel(
         if channel_cfg.get("water_depth_m_range"):
             water_depth = min(water_depth, rng.uniform(*channel_cfg["water_depth_m_range"]))
 
+    if water_depth <= 2.0:
+        return {"id": new_id, "status": "failed", "reason": "invalid_water_depth"}
+
     # 检查 SSP 是否覆盖到水底: max(z) < water_depth 意味着 SSP 太浅，
     # BELLHOP 会自行外推深层声速，结果不可靠，直接跳过
     ssp_max_depth = float(max(z))
-    if ssp_max_depth < water_depth - 1.0:
+    if ssp_max_depth < water_depth:
         print(f"  [SKIP] SSP 剖面太浅 (max_ssp={ssp_max_depth:.1f}m) 无法覆盖水深 "
               f"({water_depth:.1f}m): {sample_id}_ch{ch_idx}")
         return {"id": new_id, "status": "failed", "reason": "ssp_too_shallow"}
@@ -300,17 +330,25 @@ def _apply_one_channel(
     rx_depth = max(1.0, min(rx_depth, water_depth - 1.0))
     range_km = max(0.01, range_km)
     beam_setting = channel_cfg.get("num_beams", "adaptive")
-    effective_num_beams = resolve_num_beams(
-        beam_setting, range_km,
-        channel_cfg.get("min_beams", 1000),
-        channel_cfg.get("beams_per_km", 100.0),
-        channel_cfg.get("max_beams", 8000),
-    )
 
     # --- 读取音频 ---
     fs, audio = read_audio(wav_path)
-    if fs != int(meta.get("model_fs_hz", 16000)):
-        print(f"  [WARN] 采样率不匹配: wav={fs}, meta={meta.get('model_fs_hz')}")
+    audio_duration_s = len(audio) / fs
+    declared_duration = meta.get("audio_duration_s")
+    try:
+        duration_mismatch = abs(float(declared_duration) - audio_duration_s) > (1.0 / fs)
+    except (TypeError, ValueError):
+        duration_mismatch = declared_duration is not None
+    if duration_mismatch:
+        print(f"  [WARN] 时长不匹配，采用 WAV: wav={audio_duration_s:.6f}s, "
+              f"meta={declared_duration}")
+    declared_fs = meta.get("model_fs_hz")
+    try:
+        declared_fs = int(float(declared_fs))
+    except (TypeError, ValueError, OverflowError):
+        declared_fs = None
+    if declared_fs is not None and fs != declared_fs:
+        print(f"  [WARN] 采样率不匹配，采用 WAV: wav={fs}, meta={declared_fs}")
 
     # --- BELLHOP + CIR (PulseCom 始终有中心频率) ---
     bottom = channel_cfg.get("bottom", {})
@@ -318,8 +356,11 @@ def _apply_one_channel(
     if not center_freq or center_freq <= 0:
         print(f"  [SKIP] 无有效中心频率: center_freq={center_freq}")
         return {"id": new_id, "status": "failed", "reason": "invalid_center_frequency"}
+    if center_freq > fs / 2.0:
+        print(f"  [SKIP] 代表频率超过 WAV Nyquist: freq={center_freq:.2f}Hz, fs={fs}Hz")
+        return {"id": new_id, "status": "failed", "reason": "frequency_above_nyquist"}
 
-    arrivals = bellhop.run(
+    run_result = bellhop.run_with_beam_retry(
         depths_m=z, sound_speeds_mps=c,
         freq_hz=center_freq,
         source_depth_m=tx_depth, receiver_depth_m=rx_depth,
@@ -333,8 +374,10 @@ def _apply_one_channel(
         beams_per_km=float(channel_cfg.get("beams_per_km", 100.0)),
         max_beams=int(channel_cfg.get("max_beams", 8000)),
     )
+    arrivals = run_result["arrivals"]
+    effective_num_beams = run_result["num_beams_effective"]
     if not arrivals:
-        print(f"  [SKIP] 0 到达 (声影区): {sample_id}_ch{ch_idx}  "
+        print(f"  [SKIP] 射线加密复核后仍为 0 到达: {sample_id}_ch{ch_idx}  "
               f"range={range_km:.2f}km freq={center_freq:.0f}Hz")
         return {"id": new_id, "status": "no_arrivals"}
 
@@ -354,6 +397,8 @@ def _apply_one_channel(
     # --- 输出峰值归一化 ---
     peak = float(np.max(np.abs(convolved)))
     target_peak = float(channel_cfg.get("output_norm_peak", 0.95))
+    if not np.isfinite(target_peak) or not 0.0 < target_peak <= 1.0:
+        raise ValueError(f"output_norm_peak 必须在 (0, 1]，实际为 {target_peak!r}")
     if peak > 1e-10:
         convolved *= (target_peak / peak)
         gain_db = round(20.0 * float(np.log10(target_peak / peak)), 2)
@@ -382,6 +427,7 @@ def _apply_one_channel(
         "freq_hz": round(center_freq, 2),
         "num_beams_setting": beam_setting,
         "num_beams_effective": effective_num_beams,
+        "beam_retry": run_result["beam_retry"],
         "max_arrivals": int(channel_cfg.get("max_arrivals", 20)),
         "ray_box_margin": float(channel_cfg.get("ray_box_margin", 1.05)),
         "ray_box_range_km": round(max(
@@ -493,7 +539,7 @@ def main():
         temp_dir=paths.get("temp_dir", "temp_bellhop"),
     )
 
-    rng = np.random.default_rng(limits.get("random_seed", 42))
+    random_seed = int(limits.get("random_seed", 42))
 
     # 设置路径
     raw_root = Path(paths["raw_data"])
@@ -534,7 +580,7 @@ def main():
             ssp_sampler=ssp_sampler,
             bellhop=bellhop,
             output_root=output_root,
-            rng=rng,
+            random_seed=random_seed,
             skip_existing=skip_existing,
         )
         progress.update(result["status"])

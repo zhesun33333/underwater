@@ -41,7 +41,7 @@ channel:
     density_gcc: 1.4
     attenuation_db_per_lambda: 3.0
   frequency:
-    # PulseCom 信号使用 signal_params.center_freq_hz 运行单频 BELLHOP
+    # Pulse/Chirp 使用 center_freq_hz，数字调制使用 carrier_freq_hz
 
 # ---- QA 生成配置 ----
 qa:

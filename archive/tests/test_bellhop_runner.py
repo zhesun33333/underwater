@@ -1,4 +1,5 @@
 import sys
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,11 +10,15 @@ ARCHIVE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ARCHIVE_ROOT))
 
 from utils.bellhop_runner import (  # noqa: E402
+    BellhopRunner,
     _parse_arr_text,
     apply_channel,
     apply_frequency_dependent_channel,
     build_cir,
     generate_env,
+    make_channel_rng,
+    parse_arrivals,
+    _postprocess_arrivals,
     resolve_num_beams,
 )
 
@@ -76,6 +81,58 @@ class BellhopRunnerTests(unittest.TestCase):
             delay_reference_s=52.25,
         )
         self.assertGreater(np.max(np.abs(cir)), 0.9)
+
+    def test_fractional_delay_points_toward_later_sample(self):
+        arrivals = [{"delay_s": 0.01025, "amplitude_linear": 1.0}]
+        cir = build_cir(
+            arrivals, fs_hz=1000.0, duration_s=0.05,
+            use_normalized=False,
+        )
+        self.assertGreater(abs(cir[11]), abs(cir[9]))
+
+    def test_channel_rng_is_independent_of_processing_order(self):
+        first = make_channel_rng(42, "pulsecom", "4FSK", "sample", 0)
+        second = make_channel_rng(42, "pulsecom", "4FSK", "sample", 0)
+        other = make_channel_rng(42, "pulsecom", "4FSK", "sample", 1)
+        self.assertEqual(first.uniform(), second.uniform())
+        self.assertNotEqual(make_channel_rng(42, "x").uniform(), other.uniform())
+
+    def test_binary_arrival_fallback_is_reachable(self):
+        raw = struct.pack("<fiii", 100.0, 1, 1, 1)
+        raw += struct.pack("<i", 1)
+        raw += struct.pack("<fffffii", 0.25, 0.0, 1.5, -3.0, 4.0, 1, 2)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "binary.arr"
+            path.write_bytes(raw)
+            arrivals = parse_arrivals(path)
+        self.assertEqual(len(arrivals), 1)
+        self.assertAlmostEqual(arrivals[0]["delay_s"], 1.5)
+
+    def test_arrival_limit_keeps_true_first_arrival(self):
+        arrivals = [
+            {"delay_s": 1.0, "amplitude_linear": 0.001},
+            {"delay_s": 2.0, "amplitude_linear": 1.0},
+            {"delay_s": 3.0, "amplitude_linear": 0.5},
+        ]
+        selected = _postprocess_arrivals(arrivals, max_arrivals=2)
+        self.assertEqual([item["delay_s"] for item in selected], [1.0, 2.0])
+
+    def test_zero_arrival_adaptive_run_retries_with_more_beams(self):
+        runner = object.__new__(BellhopRunner)
+        calls = []
+
+        def fake_run(**kwargs):
+            calls.append(kwargs["num_beams"])
+            return [] if len(calls) == 1 else [{"delay_s": 1.0}]
+
+        runner.run = fake_run
+        result = runner.run_with_beam_retry(
+            range_km=10.0, num_beams="adaptive", max_beams=8000,
+        )
+        self.assertEqual(calls, ["adaptive", 4000])
+        self.assertTrue(result["beam_retry"])
+        self.assertEqual(result["num_beams_effective"], 4000)
+        self.assertEqual(len(result["arrivals"]), 1)
 
     def test_empty_cir_never_returns_original_audio(self):
         with self.assertRaises(ValueError):

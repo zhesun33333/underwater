@@ -3,6 +3,7 @@ JSONC/JSON 解析 + 三级标签提取
 处理 PulseCom (.jsonc) 和 Ship (.json) 两种格式
 """
 import json
+import math
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -107,17 +108,28 @@ def extract_labels(meta: dict) -> Dict[str, str]:
     return {"L1": l1, "L2": l2, "L3": l3, "L3_display": l3_display}
 
 
-def _normalize_water_depth(val) -> Optional[float]:
-    """归一化 water_depth_m: None/null/[]/{} → None, 数字 → float"""
+def _normalize_number(val, *, positive: bool = False, nonnegative: bool = False) -> Optional[float]:
+    """Convert a scalar-like value to a finite float or return None."""
     if val is None:
         return None
-    if isinstance(val, (int, float)):
-        return float(val)
-    if isinstance(val, list) and len(val) == 0:
-        return None
-    if isinstance(val, dict) and len(val) == 0:
-        return None
+    if isinstance(val, (int, float, str)) and not isinstance(val, bool):
+        try:
+            v = float(val)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(v):
+            return None
+        if positive and v <= 0.0:
+            return None
+        if nonnegative and v < 0.0:
+            return None
+        return v
     return None
+
+
+def _normalize_water_depth(val) -> Optional[float]:
+    """归一化 water_depth_m: None/null/[]/{}/NaN/Inf/非正数 → None。"""
+    return _normalize_number(val, positive=True)
 
 
 def get_wav_path(meta: dict) -> str:
@@ -131,36 +143,63 @@ def get_id(meta: dict) -> str:
 def get_center_freq(meta: dict) -> Optional[float]:
     """提取用于 BELLHOP 运行的代表频率。"""
     sp = meta.get("signal_params", {}) or {}
-    cf = sp.get("center_freq_hz")
-    if cf is not None:
-        return float(cf)
-    lo = sp.get("subband_low_hz") or sp.get("band_low_hz")
-    hi = sp.get("subband_high_hz") or sp.get("band_high_hz")
-    if lo and hi:
-        return (float(lo) + float(hi)) / 2.0
+    if not isinstance(sp, dict):
+        return None
+
+    # Pulse/chirp metadata uses center_freq_hz, while digital modulation
+    # metadata uses carrier_freq_hz. Both are preferable to band estimates.
+    for key in ("center_freq_hz", "carrier_freq_hz"):
+        value = sp.get(key)
+        if value is None:
+            continue
+        try:
+            frequency = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(frequency) and frequency > 0.0:
+            return frequency
+
+    # Prefer the occupied signal band over the broader nominal subband.
+    for low_key, high_key in (
+        ("band_low_hz", "band_high_hz"),
+        ("subband_low_hz", "subband_high_hz"),
+    ):
+        low = sp.get(low_key)
+        high = sp.get(high_key)
+        if low is None or high is None:
+            continue
+        try:
+            low = float(low)
+            high = float(high)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(low) and math.isfinite(high) and 0.0 <= low < high:
+            return (low + high) / 2.0
     return None
 
 
 def get_geometry(meta: dict) -> Dict[str, Optional[float]]:
     """提取几何参数 (tx_depth, rx_depth, range_m, water_depth_m)。"""
-    tx = meta.get("source_depth_m")
-    rx = meta.get("receiver_depth_m")
-    rg = meta.get("range_m")
+    tx = _normalize_number(meta.get("source_depth_m"), nonnegative=True)
+    rx = _normalize_number(meta.get("receiver_depth_m"), nonnegative=True)
+    rg = _normalize_number(meta.get("range_m"), positive=True)
     wd = _normalize_water_depth(meta.get("water_depth_m"))
 
     geo = meta.get("geometry", {}) or {}
+    if not isinstance(geo, dict):
+        geo = {}
     if tx is None:
-        tx = geo.get("tx_depth_m")
+        tx = _normalize_number(geo.get("tx_depth_m"), nonnegative=True)
     if rx is None:
-        rx = geo.get("rx_depth_m")
+        rx = _normalize_number(geo.get("rx_depth_m"), nonnegative=True)
     if rg is None:
-        rg = geo.get("range_m")
+        rg = _normalize_number(geo.get("range_m"), positive=True)
     if wd is None:
         wd = _normalize_water_depth(geo.get("water_depth_m"))
 
     return {
-        "tx_depth_m": float(tx) if tx is not None else None,
-        "rx_depth_m": float(rx) if rx is not None else None,
-        "range_m": float(rg) if rg is not None else None,
+        "tx_depth_m": tx,
+        "rx_depth_m": rx,
+        "range_m": rg,
         "water_depth_m": wd,
     }
