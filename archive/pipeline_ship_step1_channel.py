@@ -139,17 +139,15 @@ def write_audio(wav_path: Path, sr: int, data: np.ndarray, bits: int = 32):
     wavfile.write(wav_path, sr, int_data)
 
 
-# ---- 后处理 SNR 计算 ----
+# ---- 源端线谱 SNR 读取 ----
 
 def compute_post_channel_snr_ship(meta: dict) -> float:
     """
-    舰船噪声: 连续宽带信号，信号和背景噪声经过同一 CIR。
+    返回源信号元数据中的线谱/连续谱 SNR。
 
-    LTI 系统下宽带 SNR 近似不变:
-      SNR_post ≈ SNR_orig = snr_after_mix_db
-
-    # SNR 不变，衰减程度看 actual TL (宽带 TL 仅做参考)
-    若 TL 过大（如 < -60 dB），说明信号绝对电平已极低。
+    为兼容既有数据格式，结果仍写入历史字段名 snr_db；它实际是
+    source/pre-channel line-spectrum SNR，并未从频率依赖信道处理后的
+    WAV 中重新估计，因此不能解释为 received/post-channel SNR。
     """
     orig_snr = meta.get("snr_after_mix_db")
     try:
@@ -394,7 +392,10 @@ def _apply_one_ship_channel(
     # --- 卷积 ---
     convolved = apply_frequency_dependent_channel(audio, broadband["channels"], fs)
 
-    # --- RMS 传播损失 (归一化前计算，反映信道真实能量增益) ---
+    # --- 归一化前宽带 RMS 增益 ---
+    # 兼容既有数据格式，结果仍写入历史字段名 tl_db；实际定义为
+    # 20*log10(RMS(channel_output)/RMS(source))。数值越大（越接近 0）
+    # 表示增益越高、衰减越弱，不是通常取正值的 transmission loss。
     rms_orig = np.sqrt(max(1e-20, np.mean(audio ** 2)))
     rms_conv = np.sqrt(max(1e-20, np.mean(convolved ** 2)))
     tl_est = 20.0 * np.log10(rms_conv / rms_orig)
@@ -413,7 +414,7 @@ def _apply_one_ship_channel(
     else:
         gain_db = 0.0
 
-    # --- 后处理 SNR ---
+    # --- 源端线谱 SNR（不做信道后重估） ---
     snr_post = compute_post_channel_snr_ship(meta)
 
     # --- 更新元数据 ---
@@ -466,8 +467,8 @@ def _apply_one_ship_channel(
         "absolute_first_arrival_delay_s": round(broadband["delay_reference_s"], 6),
         "cir_delay_reference": "global_first_arrival",
         "broadband_application": "frequency_response_interpolation",
-        "tl_db": round(float(tl_est), 2),
-        "snr_db": snr_post,
+        "tl_db": round(float(tl_est), 2),  # legacy name: pre-normalization broadband RMS gain dB
+        "snr_db": snr_post,  # legacy name: source/pre-channel line-spectrum SNR dB
         "output_normalization_gain_db": gain_db,
         "cir_duration_s": audio_duration_s,
         "cir_fs_hz": fs,

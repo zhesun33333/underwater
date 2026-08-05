@@ -390,7 +390,11 @@ def _apply_one_channel(
     # --- 卷积 ---
     convolved = apply_channel(audio, cir)
 
-    # --- CIR 能量传播损失 (∫|h|² 直接反映信道功率衰减, 不受音频 RMS 影响) ---
+    # --- 归一化前 CIR 能量增益 ---
+    # 兼容既有数据格式，结果仍写入历史字段名 tl_db，但它实际定义为
+    #   10*log10(sum(h[n]^2))，即 channel energy gain（通常为负值），
+    # 而不是通常取正值的 transmission loss。数值越大（越接近 0）表示
+    # 信道增益越高、衰减越弱；该值在输出 peak 归一化之前计算。
     cir_energy = float(np.sum(cir ** 2))
     tl_est = 10.0 * np.log10(max(cir_energy, 1e-40))
 
@@ -444,7 +448,7 @@ def _apply_one_channel(
     new_meta["bellhop_output"] = {
         "arrivals": arrivals,
         "summary": summarize_arrivals(arrivals),
-        "tl_db": round(tl_est, 2),
+        "tl_db": round(tl_est, 2),  # legacy name: pre-normalization channel energy gain dB
         "absolute_first_arrival_delay_s": round(first_arrival_delay_s, 6),
         "cir_delay_reference": "first_arrival",
         "output_normalization_gain_db": gain_db,

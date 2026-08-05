@@ -41,7 +41,7 @@ channel:
   max_beams: 8000                               # 避免远程多频计算爆炸
   ray_box_margin: 1.05                          # RBOX/ZBOX 至少比接收距离/水深大 5%
   max_arrivals: 20
-  output_norm_peak: 0.95                       # 卷积后音频峰值归一化目标 (0<值≤1)
+  output_norm_peak: 0.95                       # 卷积后统一峰值；保留信道形变但移除绝对接收电平差异
   bottom:
     type: "silt"
     sound_speed_mps: 1520

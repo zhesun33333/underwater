@@ -277,14 +277,22 @@ def _build_section(name: str, samples: list) -> str:
 
     active = [sample for sample in samples if sample["l1"] == "active"]
     passive = [sample for sample in samples if sample["l1"] == "passive"]
-    transmission_loss = _numeric_stats([
-        abs(float(sample["tl_db"])) for sample in active if sample.get("tl_db") is not None
+    channel_gain = _numeric_stats([
+        float(sample["tl_db"]) for sample in active if sample.get("tl_db") is not None
     ])
-    snr = _numeric_stats([sample.get("snr_db") for sample in passive])
+    source_line_snr = _numeric_stats([sample.get("snr_db") for sample in passive])
     _append_distribution(
-        lines, "Transmission Loss (PulseCom; abs(raw channel gain))", transmission_loss, "dB"
+        lines,
+        "Pre-normalization Channel Energy Gain (PulseCom; legacy field tl_db; higher = less attenuation)",
+        channel_gain,
+        "dB",
     )
-    _append_distribution(lines, "Line-spectrum SNR (Ship)", snr, "dB")
+    _append_distribution(
+        lines,
+        "Source/Pre-channel Line-spectrum SNR (Ship; legacy field snr_db)",
+        source_line_snr,
+        "dB",
+    )
     _append_channel_table(lines, "PulseCom", active)
     _append_channel_table(lines, "Ship", passive)
 
