@@ -107,8 +107,10 @@
                            │
                     ┌──────▼───────┐
                     │  Step 5      │
-                    │  生成报告     │  ← Markdown报告 + 混淆矩阵图 + 错误CSV
+                    │  生成报告     │  ← 自动生成 Markdown 报告 + JSON 指标
                     └──────────────┘
+
+                    可选独立步骤：读取 JSON 指标生成 PNG/PDF 评估图
 ```
 
 ### 关键决策：细分类为什么只在粗分类正确时才计算？
@@ -191,9 +193,8 @@ testsite/
 │   └── runner.py              # 消融实验编排器
 │
 ├── reporting/                 # 报告生成
-│   ├── report.py              # Markdown 文本报告
-│   ├── charts.py              # matplotlib 图表（混淆矩阵/SNR曲线/F1柱状图）
-│   └── error_analysis.py      # 错误案例导出 CSV
+│   ├── report.py              # Markdown 评估报告 + JSON 指标
+│   └── visualize.py           # 从 JSON 指标生成 PNG/PDF 评估图
 │
 ├── utils/                     # 工具函数
 │   ├── text_utils.py          # 中文文本归一化、定界符提取、数值解析
@@ -274,7 +275,7 @@ class ModelInference:
 ### 6.1 安装依赖
 
 ```bash
-pip install pyyaml numpy matplotlib
+pip install pyyaml numpy scipy soundfile matplotlib
 ```
 
 ### 6.2 快速开始（用 Mock 数据测试框架）
@@ -288,7 +289,7 @@ python -m testsite.scripts.run_eval --mock-samples 100
 1. 生成 100 条模拟测试样本（6类均匀分布）
 2. 用 MockModel 模拟模型推理（预设 85% 粗分类准确率 + 70% 细分类准确率）
 3. 运行粗分类 + 细分类评估
-4. 输出 Markdown 报告 + 混淆矩阵图
+4. 输出 Markdown 评估报告和 JSON 指标文件
 
 ### 6.3 使用真实数据
 
@@ -306,17 +307,61 @@ python -m testsite.scripts.run_ablation --mock-samples 200 --ablation snr
 python -m testsite.scripts.run_ablation --mock-samples 200 --ablation all
 ```
 
-### 6.5 评估输出
+### 6.5 生成评估图
+
+`run_eval.py` 不会自动生成图片。评估完成后，在仓库根目录读取对应的
+`eval_metrics_*.json` 单独运行：
+
+```bash
+python -m testsite.reporting.visualize \
+  --metrics eval_results/<backend>/eval_metrics_<timestamp>.json \
+  --model-name "Model Name"
+```
+
+默认同时生成 300 DPI PNG 和 PDF，输出到指标文件旁的 `figures/` 目录。
+使用 Mock 后端时，指标文件默认直接位于 `eval_results/`，命令中的
+`<backend>/` 应省略。
+
+### 6.6 评估输出
 
 ```
-eval_results/
-├── eval_report_20260626_143000.md   # 完整评估报告
-├── confusion_matrix.png             # 混淆矩阵热力图
-├── per_class_f1.png                 # 各类F1柱状图
-├── snr_curve.png                    # SNR鲁棒性曲线（如果运行了消融）
-├── duration_curve.png               # 时长影响曲线
-└── error_analysis.csv               # 错误案例明细
+eval_results/<backend>/
+├── eval_report_<timestamp>.md       # 完整评估报告
+├── eval_metrics_<timestamp>.json    # 绘图使用的结构化指标
+└── figures/
+    ├── 01_confusion_matrix.png/.pdf
+    ├── 02_hierarchical_accuracy.png/.pdf
+    ├── 03_per_class_metrics.png/.pdf
+    ├── 04a_pulsecom_tl.png/.pdf     # 有 PulseCom 分层数据时生成
+    ├── 04b_ship_snr.png/.pdf        # 有 Ship 分层数据时生成
+    ├── 05_reasoning_cascade.png/.pdf
+    ├── 06_summary_dashboard.png/.pdf
+    ├── 07_l3_by_l2_parent.png/.pdf
+    ├── 08_top_confusion_pairs.png/.pdf
+    ├── 09_cascade_waterfall.png/.pdf
+    └── 10_precision_recall_scatter.png/.pdf
 ```
+
+这里的图片是模型评估指标图，不包含测试音频的波形、频谱或时频谱。
+
+### 6.7 测试集质量与时频特征图
+
+`plot_dataset_quality.py` 读取 testsite 实际使用的测试清单和 WAV，为13个
+L3类别确定性选择代表样本，并生成共享尺度的 STFT 时频图、类别支持结构，
+以及时长、主动信号载频、PulseCom 信道增益和 Ship 线谱 SNR 的 ECDF：
+
+```bash
+python -m testsite.reporting.plot_dataset_quality \
+  --manifest archive/testset_export/sft_test_highquality.jsonl \
+  --audio-root archive/testset_export \
+  --metadata-root archive/processed_audio \
+  --output eval_results/dataset_quality
+```
+
+默认严格检查测试集是否为13类各200条、共2,600条、16 kHz且元数据完整，
+生成 `dataset_quality.png`、`dataset_quality.pdf` 和
+`dataset_quality_selection.json`。仅调试非正式子集时可添加
+`--allow-nonpaper-subset`。
 
 ---
 

@@ -176,9 +176,9 @@ class MultiTurnEvaluator:
         reasoning = self.scorer.compute_reasoning_quality(t3_texts, predicted_l3=t3_l3s)
         reasoning.cascade_skipped = cascade_count
 
-        # ── 分源分层: PulseCom 按 TL, Ship 按 SNR ──
+        # ── 动态质量三分位: PulseCom 按信道增益, Ship 按源端线谱 SNR ──
         hierarchical.source_stratified = self.scorer.compute_source_stratified(results)
-        hierarchical.per_class_snr = self.scorer.compute_per_class_snr(
+        hierarchical.per_class_quality = self.scorer.compute_per_class_quality_tertiles(
             results, self.scorer.l3_keys)
 
         if cascade_count > 0:

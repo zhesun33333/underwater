@@ -28,6 +28,8 @@ class PromptRobustnessEvaluator:
         # ── T1 鲁棒性: 所有 T1 模板 → L1 一致性 ──
         t1_agreements = 0
         t1_total = 0
+        t1_valid = 0
+        t1_predictions = 0
         t1_per_sample = []  # 逐样本一致率, 用于 bootstrap CI
 
         for sample in samples:
@@ -36,18 +38,23 @@ class PromptRobustnessEvaluator:
                 a1 = self.inference.generate(sample.audio_path, q1)
                 pred = self.parser.parse_turn1(sample.sample_id, a1, prompt=q1)
                 l1_votes[pred.L1] = l1_votes.get(pred.L1, 0) + 1
+                t1_predictions += 1
+                if pred.L1 != "unknown":
+                    t1_valid += 1
 
-            if len(l1_votes) >= 2:
-                t1_total += 1
-                top_count = max(l1_votes.values())
-                score = top_count / len(t1_templates)
-                t1_agreements += score
-                t1_per_sample.append(score)
+            t1_total += 1
+            top_count = max(l1_votes.values())
+            score = top_count / len(t1_templates)
+            t1_agreements += score
+            t1_per_sample.append(score)
 
         # ── T2 鲁棒性: 固定 T1 (用第一个模板), 遍历所有 T2 模板 → L2/L3 一致性 ──
         t2_l2_agreements = 0
         t2_l3_agreements = 0
         t2_total = 0
+        t2_l2_valid = 0
+        t2_l3_valid = 0
+        t2_predictions = 0
         t2_l2_per_sample = []
         t2_l3_per_sample = []
 
@@ -75,25 +82,29 @@ class PromptRobustnessEvaluator:
                 a2 = self.inference.chat(sample.audio_path, history)
                 pred2 = self.parser.parse(sample.sample_id, a2, prompt=q2)
 
+                l2_votes[pred2.L2] = l2_votes.get(pred2.L2, 0) + 1
+                l3_votes[pred2.L3] = l3_votes.get(pred2.L3, 0) + 1
+                t2_predictions += 1
                 if pred2.L2 != "unknown":
-                    l2_votes[pred2.L2] = l2_votes.get(pred2.L2, 0) + 1
+                    t2_l2_valid += 1
                 if pred2.L3 != "unknown":
-                    l3_votes[pred2.L3] = l3_votes.get(pred2.L3, 0) + 1
+                    t2_l3_valid += 1
 
-            if l2_votes:
-                t2_total += 1
-                score_l2 = max(l2_votes.values()) / len(t2_pool)
-                t2_l2_agreements += score_l2
-                t2_l2_per_sample.append(score_l2)
-            if l3_votes:
-                score_l3 = max(l3_votes.values()) / len(t2_pool)
-                t2_l3_agreements += score_l3
-                t2_l3_per_sample.append(score_l3)
+            t2_total += 1
+            score_l2 = max(l2_votes.values()) / len(t2_pool)
+            score_l3 = max(l3_votes.values()) / len(t2_pool)
+            t2_l2_agreements += score_l2
+            t2_l3_agreements += score_l3
+            t2_l2_per_sample.append(score_l2)
+            t2_l3_per_sample.append(score_l3)
 
         return {
             "t1_agreement": t1_agreements / t1_total if t1_total > 0 else 0.0,
             "t2_l2_agreement": t2_l2_agreements / t2_total if t2_total > 0 else 0.0,
             "t2_l3_agreement": t2_l3_agreements / t2_total if t2_total > 0 else 0.0,
+            "t1_parse_rate": t1_valid / t1_predictions if t1_predictions > 0 else 0.0,
+            "t2_l2_parse_rate": t2_l2_valid / t2_predictions if t2_predictions > 0 else 0.0,
+            "t2_l3_parse_rate": t2_l3_valid / t2_predictions if t2_predictions > 0 else 0.0,
             "t1_samples": t1_total,
             "t2_samples": t2_total,
             "t1_per_sample": t1_per_sample,

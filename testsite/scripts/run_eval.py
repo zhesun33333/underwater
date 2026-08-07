@@ -122,12 +122,12 @@ def main():
             for b in src.get("bins", []):
                 print(f"  {b['label']:<16} {b['count']:>5} {b['l3_acc']:>7.2%} {b['cascade_rate']:>7.2%}")
 
-    if hier_metrics.per_class_snr:
-        deg = hier_metrics.per_class_snr.get("degradation", {})
+    if hier_metrics.per_class_quality:
+        deg = hier_metrics.per_class_quality.get("degradation", {})
         if deg:
-            print(f"\n  Top 3 classes by SNR degradation:")
+            print(f"\n  Top 3 classes by quality-tertile degradation:")
             for cls, drop in sorted(deg.items(), key=lambda x: -x[1])[:3]:
-                print(f"    {cls}: {drop:.0%}")
+                print(f"    {cls}: high-minus-low accuracy = {drop:.0%}")
 
     print(f"\n  T3 Alignment:       {reasoning.alignment_rate:.2%}")
     print(f"  T3 Contradiction:   {reasoning.contradiction_rate:.2%}")
@@ -194,6 +194,9 @@ def main():
               f"{robust['t2_l2_agreement']:.2%}  (95% CI {t2_l2_ci})")
         print(f"  T2 L3 agreement ({robust['t2_samples']} samples): "
               f"{robust['t2_l3_agreement']:.2%}  (95% CI {t2_l3_ci})")
+        print(f"  Parse coverage: T1={robust['t1_parse_rate']:.2%}, "
+              f"T2-L2={robust['t2_l2_parse_rate']:.2%}, "
+              f"T2-L3={robust['t2_l3_parse_rate']:.2%}")
 
     # ============================================================
     # 6. 生成报告

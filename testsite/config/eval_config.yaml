@@ -19,7 +19,7 @@ taxonomy:
         aliases: ["passively received", "passive", "passive signal", "passive reception",
                   "passive listening", "target-radiated", "target-radiated signal",
                   "target-radiated noise", "radiated noise", "passive detection",
-                  "ship-radiated", "naturally emitted"]
+                  "ship-radiated", "self-radiated by the source platform"]
 
   L2:
     name: "Signal Subcategory"
@@ -114,13 +114,13 @@ taxonomy:
         parent: ship_noise
         aliases: ["naval vessel", "warship", "naval ship", "military vessel",
                   "military ship", "combat vessel", "navy ship", "frigate",
-                  "destroyer", "submarine"]
+                  "destroyer"]
       - key: underwater_target
-        name: "Underwater target"
+        name: "Underwater vehicle"
         parent: ship_noise
         aliases: ["underwater target", "underwater vehicle", "underwater object",
                   "subsurface target", "submerged target", "UUV", "underwater craft",
-                  "unmanned underwater vehicle", "underwater drone", "AUV"]
+                  "unmanned underwater vehicle", "underwater drone", "AUV", "submarine"]
 
 # ============================================================
 # Evaluation Prompts
@@ -137,9 +137,9 @@ prompts:
       - "Understood — it is {L1}. Now identify which subcategory it belongs to.\nOptions:\nA. Active — Detection pulse — CW (Continuous Wave)\nB. Active — Detection pulse — LFM (Linear Frequency Modulation)\nC. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)\nD. Active — Communication — 2FSK (Binary Frequency Shift Keying)\nE. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)\nF. Active — Communication — BPSK (Binary Phase Shift Keying)\nG. Active — Communication — QPSK (Quadrature Phase Shift Keying)\nH. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)"
       - "Signal is {L1}. What is its specific signal type?\nOptions:\nA. Active — Detection pulse — CW (Continuous Wave)\nB. Active — Detection pulse — LFM (Linear Frequency Modulation)\nC. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)\nD. Active — Communication — 2FSK (Binary Frequency Shift Keying)\nE. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)\nF. Active — Communication — BPSK (Binary Phase Shift Keying)\nG. Active — Communication — QPSK (Quadrature Phase Shift Keying)\nH. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)"
     turn2_passive:
-      - "Good — the signal is {L1}. Identify which type of vessel or underwater target produced this radiated noise.\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater target"
-      - "Confirmed as {L1}. Now identify the specific type of noise source.\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater target"
-      - "Signal is {L1}. What kind of platform emitted this noise?\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater target"
+      - "Good — the signal is {L1}. Identify which type of vessel or underwater vehicle produced this radiated noise.\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater vehicle"
+      - "Confirmed as {L1}. Now identify the specific type of noise source.\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater vehicle"
+      - "Signal is {L1}. What kind of platform emitted this noise?\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater vehicle"
     turn3: "Please briefly explain your reasoning."
 
 # ============================================================

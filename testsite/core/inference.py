@@ -369,7 +369,7 @@ class MockModel:
         "QPSK": "QPSK (Quadrature Phase Shift Keying)",
         "OFDM": "OFDM (Orthogonal Frequency Division Multiplexing)",
         "cargo": "Cargo vessel", "cruise": "Cruise ship", "fishing": "Fishing vessel",
-        "warship": "Naval vessel", "underwater_target": "Underwater target",
+        "warship": "Naval vessel", "underwater_target": "Underwater vehicle",
     }
     L2_POOLS = {"active": ["pulse", "communication"], "passive": ["ship_noise"]}
     L3_BY_L2 = {

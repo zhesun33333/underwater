@@ -39,7 +39,7 @@ L3_DISPLAY = {
     "2FSK": "2FSK", "4FSK": "4FSK", "BPSK": "BPSK",
     "QPSK": "QPSK", "OFDM": "OFDM",
     "cargo": "Cargo", "cruise": "Cruise", "fishing": "Fishing",
-    "warship": "Warship", "underwater_target": "Underwater\ntarget",
+    "warship": "Warship", "underwater_target": "Underwater\nvehicle",
 }
 _NAME_TO_SHORT = {
     "CW (Continuous Wave)": "CW", "CW连续波": "CW",

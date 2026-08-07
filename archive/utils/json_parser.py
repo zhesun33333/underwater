@@ -101,7 +101,7 @@ def extract_labels(meta: dict) -> Dict[str, str]:
         "cruise": "Cruise ship",
         "fishing": "Fishing vessel",
         "warship": "Naval vessel",
-        "underwater_target": "Underwater target",
+        "underwater_target": "Underwater vehicle",
     }
     l3_display = l3_display_map.get(l3, l3)
 

@@ -37,8 +37,8 @@ class ReportGenerator:
         if hierarchical.source_stratified:
             sections.append(self._source_stratified_section(hierarchical.source_stratified))
 
-        if hierarchical.per_class_snr:
-            sections.append(self._per_class_snr_section(hierarchical.per_class_snr))
+        if hierarchical.per_class_quality:
+            sections.append(self._per_class_quality_section(hierarchical.per_class_quality))
 
         if reasoning:
             sections.append(self._reasoning_section(reasoning))
@@ -79,8 +79,8 @@ class ReportGenerator:
             result["l3_confusion_labels"] = h.l3.confusion_labels
         if h.source_stratified:
             result["source_stratified"] = h.source_stratified
-        if h.per_class_snr:
-            result["per_class_snr"] = h.per_class_snr
+        if h.per_class_quality:
+            result["per_class_quality"] = h.per_class_quality
         if r:
             result["reasoning"] = {
                 "alignment_rate": r.alignment_rate,
@@ -139,7 +139,9 @@ class ReportGenerator:
     def _source_stratified_section(data: dict) -> str:
         lines = [
             "---\n## 3. Source-Stratified Quality\n",
-            "PulseCom stratified by transmission loss (TL), Ship stratified by line-spectrum SNR.\n",
+            ("PulseCom is ranked by pre-normalization channel energy gain; Ship is "
+             "ranked by source/pre-channel line-spectrum SNR. Each source family is "
+             "split into count-balanced dynamic tertiles.\n"),
         ]
         for src_key in ["PulseCom_TL", "Ship_SNR"]:
             src = data.get(src_key, {})
@@ -156,39 +158,35 @@ class ReportGenerator:
         return "\n".join(lines)
 
     @staticmethod
-    def _per_class_snr_section(data: dict) -> str:
-        per_bin = data.get("per_bin", {})
+    def _per_class_quality_section(data: dict) -> str:
+        classes = data.get("classes", {})
         degradation = data.get("degradation", {})
-        if not per_bin:
+        if not classes:
             return ""
 
         lines = [
-            "---\n## Per-Class SNR Degradation Analysis\n",
-            "### L3 Accuracy by Class across SNR Bins\n",
+            "---\n## Per-Class Dynamic Quality-Tertile Analysis\n",
+            f"Policy: {data.get('policy', 'count-balanced dynamic tertiles')}\n",
         ]
 
-        all_classes = sorted(degradation.keys(),
-                             key=lambda c: degradation.get(c, 0), reverse=True)
-        if not all_classes:
-            return ""
-
-        for label in per_bin:
-            bin_data = per_bin[label]
-            lines.append(f"#### {label}")
-            lines.append("| Class | Count | Accuracy |")
-            lines.append("|------|--------|----------|")
-            for cls in all_classes:
-                cd = bin_data.get(cls, {})
-                cnt = cd.get("count", 0)
-                if cnt == 0:
-                    continue
-                lines.append(f"| {cls} | {cnt} | **{cd['acc']:.2%}** |")
+        for cls in sorted(classes):
+            class_data = classes[cls]
+            lines.append(f"### {cls}")
+            lines.append(f"Metric: {class_data.get('metric', 'quality score')}\n")
+            lines.append("| Dynamic tertile | Count | Value range | L3 Accuracy |")
+            lines.append("|---|---:|---:|---:|")
+            for item in class_data.get("bins", []):
+                lines.append(
+                    f"| {item['tier']} | {item['count']} | "
+                    f"{item['min']:.2f} to {item['max']:.2f} {class_data.get('unit', '')} | "
+                    f"**{item['l3_acc']:.2%}** |"
+                )
             lines.append("")
 
         if degradation:
-            lines.append("### SNR Degradation Magnitude (≥15dB → ≤-5dB)\n")
-            lines.append("| Class | Degradation |")
-            lines.append("|------|----------|")
+            lines.append("### Accuracy Change from Low to High Tertile\n")
+            lines.append("| Class | High minus Low |")
+            lines.append("|---|---:|")
             for cls, drop in sorted(degradation.items(), key=lambda x: -x[1]):
                 lines.append(f"| {cls} | {drop:.1%} |")
             lines.append("")

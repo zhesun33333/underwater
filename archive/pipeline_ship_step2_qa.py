@@ -43,10 +43,10 @@ _T2_SHIP_OPTIONS = (
     "B. Passive — Ship-radiated noise — Cruise ship\n"
     "C. Passive — Ship-radiated noise — Fishing vessel\n"
     "D. Passive — Ship-radiated noise — Naval vessel\n"
-    "E. Passive — Ship-radiated noise — Underwater target"
+    "E. Passive — Ship-radiated noise — Underwater vehicle"
 )
 T2_TEMPLATES = [
-    f"Good — the signal is {{L1}}. Identify which type of vessel or underwater target produced this radiated noise.\nOptions:\n{_T2_SHIP_OPTIONS}",
+    f"Good — the signal is {{L1}}. Identify which type of vessel or underwater vehicle produced this radiated noise.\nOptions:\n{_T2_SHIP_OPTIONS}",
     f"Confirmed as {{L1}}. Now identify the specific type of noise source.\nOptions:\n{_T2_SHIP_OPTIONS}",
     f"Signal is {{L1}}. What kind of platform emitted this noise?\nOptions:\n{_T2_SHIP_OPTIONS}",
     f"Got it. For this {{L1}} signal, further determine the target type.\nOptions:\n{_T2_SHIP_OPTIONS}",
@@ -65,7 +65,7 @@ _T2_PASSIVE_FULL = {
     "cruise": "B. Passive — Ship-radiated noise — Cruise ship",
     "fishing": "C. Passive — Ship-radiated noise — Fishing vessel",
     "warship": "D. Passive — Ship-radiated noise — Naval vessel",
-    "underwater_target": "E. Passive — Ship-radiated noise — Underwater target",
+    "underwater_target": "E. Passive — Ship-radiated noise — Underwater vehicle",
 }
 
 def get_t1_answer(l1: str) -> str:
@@ -76,12 +76,14 @@ def get_t1_answer(l1: str) -> str:
 def build_turn2_answer(labels: Dict[str, str]) -> str:
     """Turn 2 答案: 完整选项文本 (A-E for passive)。"""
     l3 = labels["L3"]
-    return _T2_PASSIVE_FULL.get(l3, "A. Passive — Ship-radiated noise — Cargo vessel")
+    if l3 not in _T2_PASSIVE_FULL:
+        raise ValueError(f"unsupported Ship L3 label: {l3!r}")
+    return _T2_PASSIVE_FULL[l3]
 
 
-def build_turn3_answer(labels: Dict[str, str]) -> str:
+def build_turn3_answer(labels: Dict[str, str], meta: Dict, rng: random.Random) -> str:
     """Turn 3 答案: 结构化推理文本。"""
-    return _build_reasoning(labels["L3"])
+    return _build_reasoning(labels["L3"], meta, rng)
 
 
 # ============================================================
@@ -90,41 +92,30 @@ def build_turn3_answer(labels: Dict[str, str]) -> str:
 # ============================================================
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared_terminology import (
-    L1_ACTIVE_TERMS  as _L1_ACTIVE_TERMS,
     L1_PASSIVE_TERMS as _L1_PASSIVE_TERMS,
-    L2_ACTIVE_TERMS  as _L2_ACTIVE_TERMS,
     L2_PASSIVE_TERMS as _L2_PASSIVE_TERMS,
-    L3_PRECISE       as _L3_TERMS,
+    build_l3_evidence,
 )
 
 # T3 句式模板 (3 种变体)
 _T3_TEMPLATES = [
-    "The signal is {L1}, exhibiting {L2}, characterized by {L3}.",
-    "Based on acoustic features, the signal is {L1}; {L2} features are prominent; {L3} is a distinguishing indicator.",
-    "Audio analysis indicates the signal is {L1}; aurally, {L2} dominates, with {L3}.",
+    "The signal is {L1} and exhibits {L2}; observable evidence includes {L3}.",
+    "Based on its spectral and modulation structure, the signal is {L1} with {L2}; supporting cues are {L3}.",
+    "Spectral and temporal analysis indicates {L1} with {L2}, supported by {L3}.",
 ]
 
 
-def _build_reasoning(l3: str) -> str:
+def _build_reasoning(l3: str, meta: Dict, rng: random.Random) -> str:
     """根据 L3 类型生成结构化推理文本: L1描述 + L2特征 + L3术语。"""
-    terms = _L3_TERMS.get(l3)
-    if not terms:
-        return ""
+    terms = build_l3_evidence(l3, meta, rng)
+    l3_text = ", ".join(terms)
 
-    k = random.randint(2, min(3, len(terms)))
-    l3_text = ", ".join(random.sample(terms, k))
+    if l3 not in _T2_PASSIVE_FULL:
+        raise ValueError(f"unsupported Ship L3 label: {l3!r}")
+    l1_text = rng.choice(_L1_PASSIVE_TERMS)
+    l2_text = rng.choice(_L2_PASSIVE_TERMS["ship-radiated noise"])
 
-    if l3 in ("CW", "LFM", "HFM"):
-        l1_text = random.choice(_L1_ACTIVE_TERMS)
-        l2_text = random.choice(_L2_ACTIVE_TERMS["detection pulse"])
-    elif l3 in ("2FSK", "4FSK", "BPSK", "QPSK", "OFDM"):
-        l1_text = random.choice(_L1_ACTIVE_TERMS)
-        l2_text = random.choice(_L2_ACTIVE_TERMS["communication signal"])
-    else:
-        l1_text = random.choice(_L1_PASSIVE_TERMS)
-        l2_text = random.choice(_L2_PASSIVE_TERMS["ship-radiated noise"])
-
-    template = random.choice(_T3_TEMPLATES)
+    template = rng.choice(_T3_TEMPLATES)
     return template.replace("{L1}", l1_text).replace("{L2}", l2_text).replace("{L3}", l3_text)
 
 
@@ -133,6 +124,7 @@ def _build_reasoning(l3: str) -> str:
 # ============================================================
 def build_conversations(
     labels: Dict[str, str],
+    meta: Dict,
     rng: random.Random,
 ) -> List[Dict[str, str]]:
     """生成三轮对话: T1(L1) → T2(L2+L3) → T3(推理依据)。"""
@@ -142,7 +134,7 @@ def build_conversations(
     q2 = rng.choice(T2_TEMPLATES).replace("{L1}", l1)
     a2 = build_turn2_answer(labels)
     q3 = T3_PROMPT
-    a3 = build_turn3_answer(labels)
+    a3 = build_turn3_answer(labels, meta, rng)
     return [
         {"from": "human", "value": q1},
         {"from": "gpt", "value": a1},
@@ -200,7 +192,7 @@ def process_single_json(
             wav_rel = str(wav_path.relative_to(processed_root))
         else:
             return None
-    conversations = build_conversations(labels, rng)
+    conversations = build_conversations(labels, meta, rng)
     return {
         "id": sample_id,
         "audio": wav_rel,
