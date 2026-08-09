@@ -110,25 +110,6 @@ def main():
     print(f"  L2|L1:              {hier_metrics.l2_given_l1:.2%}")
     print(f"  L3|L2:              {hier_metrics.l3_given_l2:.2%}")
     print()
-    if hier_metrics.source_stratified:
-        for src_key in ["PulseCom_TL", "Ship_SNR"]:
-            src = hier_metrics.source_stratified.get(src_key, {})
-            if not src:
-                continue
-            print(f"\n  {'─' * 50}")
-            print(f"  {src.get('name', src_key)}")
-            print(f"  Total samples: {src.get('count', 0)}")
-            print(f"  {'Bin':<16} {'Count':>5} {'L3 Acc':>8} {'Cascade':>8}")
-            for b in src.get("bins", []):
-                print(f"  {b['label']:<16} {b['count']:>5} {b['l3_acc']:>7.2%} {b['cascade_rate']:>7.2%}")
-
-    if hier_metrics.per_class_quality:
-        deg = hier_metrics.per_class_quality.get("degradation", {})
-        if deg:
-            print(f"\n  Top 3 classes by quality-tertile degradation:")
-            for cls, drop in sorted(deg.items(), key=lambda x: -x[1])[:3]:
-                print(f"    {cls}: high-minus-low accuracy = {drop:.0%}")
-
     print(f"\n  T3 Alignment:       {reasoning.alignment_rate:.2%}")
     print(f"  T3 Contradiction:   {reasoning.contradiction_rate:.2%}")
     print(f"  Concept Confusion:   {reasoning.concept_confusion_rate:.2%}")

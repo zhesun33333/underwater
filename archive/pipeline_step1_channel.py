@@ -403,11 +403,13 @@ def _apply_one_channel(
     target_peak = float(channel_cfg.get("output_norm_peak", 0.95))
     if not np.isfinite(target_peak) or not 0.0 < target_peak <= 1.0:
         raise ValueError(f"output_norm_peak 必须在 (0, 1]，实际为 {target_peak!r}")
-    if peak > 1e-10:
-        convolved *= (target_peak / peak)
-        gain_db = round(20.0 * float(np.log10(target_peak / peak)), 2)
-    else:
-        gain_db = 0.0
+    if not np.isfinite(peak) or peak <= 0.0:
+        raise ValueError("信道卷积结果全零或非有限，拒绝写出静音 WAV")
+    normalization_scale = target_peak / peak
+    if not np.isfinite(normalization_scale):
+        raise ValueError(f"输出归一化比例无效: peak={peak!r}")
+    convolved *= normalization_scale
+    gain_db = round(20.0 * float(np.log10(normalization_scale)), 2)
 
     # --- 更新元数据 ---
     new_meta = dict(meta)

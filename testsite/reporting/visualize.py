@@ -16,16 +16,16 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 import numpy as np
 
-
-NAVY = "#244A64"
-BLUE = "#4C78A8"
-TEAL = "#2A9D8F"
-ORANGE = "#F28E2B"
-RED = "#D1495B"
-PURPLE = "#7A6FAC"
-GRAY = "#8A94A3"
-LIGHT_GRAY = "#DCE3E8"
-INK = "#263238"
+try:
+    from .plot_style import (
+        BLUE, GRAY, INK, NAVY, ORANGE, PURPLE, RED, TEAL,
+        apply_publication_style, save_figure, style_axis,
+    )
+except ImportError:  # Allow direct execution from testsite/reporting.
+    from plot_style import (  # type: ignore
+        BLUE, GRAY, INK, NAVY, ORANGE, PURPLE, RED, TEAL,
+        apply_publication_style, save_figure, style_axis,
+    )
 
 L3_SHORT = {
     "pulse": ["CW", "LFM", "HFM"],
@@ -62,52 +62,17 @@ OUTPUT_DPI = 300
 
 
 def _apply_publication_style():
-    plt.rcParams.update({
-        # Follow the reference figures' paper-like serif typography without
-        # requiring a LaTeX installation at evaluation time.
-        "font.family": "Times New Roman",
-        "mathtext.fontset": "stix",
-        "font.size": 9,
-        "axes.titlesize": 11,
-        "axes.titleweight": "semibold",
-        "axes.labelsize": 9.5,
-        "axes.labelcolor": INK,
-        "axes.edgecolor": "#AAB4BC",
-        "axes.linewidth": 0.8,
-        "patch.edgecolor": "#263238",
-        "patch.linewidth": 0.65,
-        "patch.force_edgecolor": True,
-        "xtick.labelsize": 8.5,
-        "ytick.labelsize": 8.5,
-        "xtick.color": INK,
-        "ytick.color": INK,
-        "legend.fontsize": 8.5,
-        "figure.facecolor": "white",
-        "axes.facecolor": "white",
-        "savefig.facecolor": "white",
-        "savefig.bbox": "tight",
-    })
+    return apply_publication_style()
 
 
 def _style_axis(ax, grid_axis="y"):
-    # The boxed frame, inward ticks and dash-dot grid echo the supplied
-    # reference plots, with lighter strokes to avoid visual clutter.
-    for spine in ax.spines.values():
-        spine.set_visible(True)
-        spine.set_color("#8E99A1")
-        spine.set_linewidth(0.7)
-    ax.tick_params(direction="in", top=True, right=True, length=3.5, width=0.7)
-    ax.grid(axis=grid_axis, color="#C7CED4", linestyle="-.", linewidth=0.65, alpha=0.75)
-    ax.minorticks_on()
-    ax.grid(which="minor", axis=grid_axis, color=LIGHT_GRAY, linestyle=":", linewidth=0.45, alpha=0.55)
-    ax.set_axisbelow(True)
+    style_axis(ax, grid_axis)
 
 
 def _save_figure(fig, output_dir: Path, stem: str):
-    for fmt in OUTPUT_FORMATS:
-        path = output_dir / f"{stem}.{fmt}"
-        fig.savefig(path, dpi=OUTPUT_DPI if fmt == "png" else None)
-    plt.close(fig)
+    save_figure(
+        fig, output_dir / stem, formats=OUTPUT_FORMATS, dpi=OUTPUT_DPI,
+    )
     print(f"  [OK] {stem}.png" + (" + PDF" if "pdf" in OUTPUT_FORMATS else ""))
 
 
@@ -244,44 +209,6 @@ def plot_per_class_metrics(metrics: dict, output_dir: Path):
     fig.suptitle("Per-class L3 performance", y=1.08, fontsize=12, fontweight="semibold")
     fig.tight_layout()
     _save_figure(fig, output_dir, "03_per_class_metrics")
-
-
-def _short_bin_label(label: str) -> str:
-    text = " ".join(label.split())
-    return text.replace("  ", " ")
-
-
-def plot_source_stratified(metrics: dict, output_dir: Path):
-    src_data = metrics.get("source_stratified", {})
-    specifications = {
-        "PulseCom_TL": ("04a_pulsecom_tl", "Active signals by pre-normalization channel gain",
-                        "Legacy field: tl_db; higher values indicate less attenuation / more retained energy."),
-        "Ship_SNR": ("04b_ship_snr", "Ship noise by source/pre-channel line-spectrum SNR",
-                     "SNR is measured before channel propagation; higher values indicate a clearer source line spectrum."),
-    }
-    for key, (stem, title, note) in specifications.items():
-        bins = src_data.get(key, {}).get("bins", [])
-        if not bins:
-            continue
-        labels = [_short_bin_label(b["label"]) for b in bins]
-        acc = np.array([b["l3_acc"] for b in bins]) * 100
-        cascade = np.array([b["cascade_rate"] for b in bins]) * 100
-        counts = [b["count"] for b in bins]
-        fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.2))
-        for ax, values, subtitle, color in zip(axes, (acc, cascade),
-                                               ("L3 accuracy", "Cascade rate"), (BLUE, RED)):
-            bars = ax.bar(range(len(bins)), values, color=color, width=.62)
-            _annotate_bars(ax, bars, values)
-            ax.set_xticks(range(len(bins)), [f"{label}\nn={n}" for label, n in zip(labels, counts)])
-            ax.set_ylabel("Rate (%)")
-            ax.set_title(subtitle)
-            ax.set_ylim(0, min(100, max(10, values.max() * 1.2)))
-            ax.yaxis.set_major_formatter(mticker.PercentFormatter())
-            _style_axis(ax)
-        fig.suptitle(title, fontsize=12, fontweight="semibold", y=1.02)
-        fig.text(.5, -.01, note, ha="center", fontsize=8, color=GRAY)
-        fig.tight_layout()
-        _save_figure(fig, output_dir, stem)
 
 
 def plot_reasoning_quality(metrics: dict, total_samples: int, output_dir: Path):
@@ -501,7 +428,8 @@ def main():
     if not OUTPUT_FORMATS:
         parser.error("--formats must contain at least one format")
     OUTPUT_DPI = args.dpi
-    _apply_publication_style()
+    chosen_font = _apply_publication_style()
+    print(f"Plot font: {chosen_font}")
 
     output_dir = Path(args.output) if args.output else Path(args.metrics).parent / "figures"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -513,7 +441,6 @@ def main():
     plot_confusion_matrix(metrics, output_dir)
     plot_hierarchical_accuracy(metrics, output_dir)
     plot_per_class_metrics(metrics, output_dir)
-    plot_source_stratified(metrics, output_dir)
     plot_reasoning_quality(metrics, total, output_dir)
     plot_summary_dashboard(metrics, output_dir, args.model_name or "")
     plot_l3_by_l2_parent(metrics, output_dir)

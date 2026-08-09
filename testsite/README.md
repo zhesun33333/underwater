@@ -194,6 +194,7 @@ testsite/
 │
 ├── reporting/                 # 报告生成
 │   ├── report.py              # Markdown 评估报告 + JSON 指标
+│   ├── plot_style.py          # 评估图与数据质量图共用的出版级样式
 │   └── visualize.py           # 从 JSON 指标生成 PNG/PDF 评估图
 │
 ├── utils/                     # 工具函数
@@ -320,7 +321,9 @@ python -m testsite.reporting.visualize \
 
 默认同时生成 300 DPI PNG 和 PDF，输出到指标文件旁的 `figures/` 目录。
 使用 Mock 后端时，指标文件默认直接位于 `eval_results/`，命令中的
-`<backend>/` 应省略。
+`<backend>/` 应省略。绘图会优先使用 Times New Roman；服务器未安装时会
+静默选用 Liberation Serif、Nimbus Roman 或 DejaVu Serif，并在启动时打印
+实际字体，不影响图片生成。
 
 ### 6.6 评估输出
 
@@ -346,6 +349,34 @@ eval_results/<backend>/
 
 ### 6.7 测试集质量与时频特征图
 
+在 `archive/` 中构建一套 2,600 条、13 个 L3 类别各 200 条的有利条件测试
+清单。每类先按质量指标降序取前 400 条候选，再以固定随机种子抽取 200 条：
+
+```bash
+python filter_test_set.py \
+  --input dataset/sft_test.jsonl \
+  --output dataset/sft_test_highquality.jsonl \
+  --n-per-class 200 \
+  --candidate-multiplier 2
+```
+
+导出清单时显式指定输入和输出目录，例如：
+
+```bash
+python export_test_set.py \
+  --input dataset/sft_test_highquality.jsonl \
+  --output testset_export \
+  --no-compress
+```
+
+筛选器把质量指标、分数、类内排名、候选池大小和选择策略写入每条记录的
+`_meta`，便于完整追溯。PulseCom 使用峰值归一化前的信道能量增益排序，Ship
+使用过信道前的线谱 SNR 排序；二者都是筛选变量，不应表述为统一的感知清晰度。
+
+这套清单用于考察较有利条件下的基础类别识别能力。论文中不能据此声称模型
+已经具备恶劣传播、低可观测目标或完整业务域上的鲁棒性，也不应把单个可视化
+样本表述为全类别或真实海况的统计代表。
+
 `plot_dataset_quality.py` 读取 testsite 实际使用的测试清单和 WAV，为13个
 L3类别确定性选择代表样本，并生成共享尺度的 STFT 时频图、类别支持结构，
 以及时长、主动信号载频、PulseCom 信道增益和 Ship 线谱 SNR 的 ECDF：
@@ -360,8 +391,12 @@ python -m testsite.reporting.plot_dataset_quality \
 
 默认严格检查测试集是否为13类各200条、共2,600条、16 kHz且元数据完整，
 生成 `dataset_quality.png`、`dataset_quality.pdf` 和
-`dataset_quality_selection.json`。仅调试非正式子集时可添加
-`--allow-nonpaper-subset`。
+`dataset_quality_selection.json`。总图为每个 L3 展示一个确定性选择的样本，
+并保留类别支持结构以及时长、主动信号载频、PulseCom 信道增益和 Ship 线谱
+SNR 的连续分布。仅调试非正式子集时可添加 `--allow-nonpaper-subset`。
+
+该脚本与评估结果图共用同一套字体、配色、坐标轴和 PNG/PDF 导出样式；可用
+`--dpi` 调整 PNG 分辨率，默认仍为 300 DPI。
 
 ---
 

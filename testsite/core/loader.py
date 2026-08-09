@@ -72,10 +72,13 @@ class DataLoader:
             gt = embedded_gt
             meta = {}
             if embedded_meta:
-                if "tl_db" in embedded_meta:
-                    meta["tl_db"] = embedded_meta["tl_db"]
-                if "snr_db" in embedded_meta:
-                    meta["snr_db"] = embedded_meta["snr_db"]
+                for key in (
+                    "tl_db", "snr_db", "quality_score", "quality_metric",
+                    "quality_rank_within_l3", "quality_pool_size_within_l3",
+                    "candidate_pool_size_within_l3", "selection_policy",
+                ):
+                    if key in embedded_meta:
+                        meta[key] = embedded_meta[key]
                 meta["ssp_complexity"] = embedded_meta.get("ssp_complexity")
         else:
             gt, meta = self._lookup_meta(audio_base, audio_rel, sample_id)

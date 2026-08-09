@@ -171,27 +171,19 @@ def _load_split(jsonl_path: str, audio_base: Path, label: str = "") -> list:
 
 
 def _numeric_stats(values: list) -> dict:
-    """Return summary statistics and count-balanced dynamic tertiles."""
+    """Return continuous summary statistics without discretizing the data."""
     ordered = sorted(float(value) for value in values if value is not None)
     if not ordered:
         return {}
     count = len(ordered)
     middle = count // 2
     median = ordered[middle] if count % 2 else (ordered[middle - 1] + ordered[middle]) / 2
-    low_end = count // 3
-    high_start = (2 * count) // 3
-    groups = (
-        ("Low", ordered[:low_end]),
-        ("Mid", ordered[low_end:high_start]),
-        ("High", ordered[high_start:]),
-    )
     return {
         "count": count,
         "min": ordered[0],
         "max": ordered[-1],
         "mean": sum(ordered) / count,
         "median": median,
-        "tiers": [(name, group) for name, group in groups if group],
     }
 
 
@@ -208,15 +200,7 @@ def _append_distribution(lines: list, title: str, stats: dict, unit: str) -> Non
         f"| Mean | {stats['mean']:.2f} {unit} |",
         f"| Median | {stats['median']:.2f} {unit} |",
         "",
-        "| Dynamic tertile | Count | Value range | Ratio |",
-        "|---|---:|---:|---:|",
     ])
-    for name, values in stats["tiers"]:
-        lines.append(
-            f"| {name} | {len(values)} | {values[0]:.2f} to {values[-1]:.2f} {unit} | "
-            f"{len(values) / stats['count']:.1%} |"
-        )
-    lines.append("")
 
 
 def _append_channel_table(lines: list, title: str, samples: list) -> None:

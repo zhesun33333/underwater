@@ -7,7 +7,6 @@
   - 推理质量: Domain Term Match Rate
 """
 
-import math
 import re
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
@@ -56,8 +55,6 @@ class HierarchicalMetrics:
     l3_given_l2: float = 0.0
     joint_accuracy: float = 0.0
     parse_tier_dist: Dict[int, int] = field(default_factory=dict)
-    source_stratified: Dict[str, dict] = field(default_factory=dict)  # PulseCom_TL / Ship_SNR 分源分层
-    per_class_quality: Dict[str, dict] = field(default_factory=dict)  # 逐类动态质量三分位
 
 
 @dataclass
@@ -223,84 +220,6 @@ class Scorer:
         )
 
     # ============================================================
-    # 按数据来源分层: 三分位 (tertile) 动态切分
-    # ============================================================
-
-    @staticmethod
-    def _dynamic_tertiles(items: list, value_getter) -> list:
-        """Return count-balanced Low/Mid/High groups ranked by a finite value."""
-        ranked = []
-        for item in items:
-            value = value_getter(item)
-            try:
-                value = float(value)
-            except (TypeError, ValueError):
-                continue
-            if math.isfinite(value):
-                ranked.append((value, item))
-        ranked.sort(key=lambda pair: pair[0])
-        if len(ranked) < 3:
-            return []
-
-        low_end = len(ranked) // 3
-        high_start = (2 * len(ranked)) // 3
-        return [
-            ("Low", ranked[:low_end]),
-            ("Mid", ranked[low_end:high_start]),
-            ("High", ranked[high_start:]),
-        ]
-
-    @staticmethod
-    def compute_source_stratified(results: list) -> dict:
-        """按数据来源分层评估。
-
-        PulseCom 按归一化前信道能量增益三分位切，Ship 按源端线谱 SNR 三分位切。
-        不再使用固定阈值 —— 根据测试集实际分布动态划分，保证每个 bin 样本量大致相等。
-        """
-        pulsecom = [r for r in results if r.sample.gt["L1"] == "active"]
-        ship = [r for r in results if r.sample.gt["L1"] == "passive"]
-
-        def _tertile_bins(group, metric_key, unit):
-            """将 group 按 metric 排名切为样本数平衡的三个 bin。"""
-            bins = []
-            groups = Scorer._dynamic_tertiles(
-                group, lambda r: r.sample.metadata.get(metric_key),
-            )
-            for tier, members in groups:
-                values = [value for value, _ in members]
-                matched = [r for _, r in members]
-                n_bin = len(matched)
-                l3_ok = sum(1 for r in matched if r.turn2_pred.L3 == r.sample.gt["L3"])
-                cascade = sum(1 for r in matched if r.cascade_skipped)
-                bins.append({
-                    "tier": tier,
-                    "label": f"{tier} ({values[0]:.1f} ~ {values[-1]:.1f} {unit})",
-                    "count": n_bin,
-                    "min": values[0],
-                    "max": values[-1],
-                    "l3_acc": l3_ok / n_bin, "cascade_rate": cascade / n_bin,
-                })
-            return bins
-
-        pc_bins = _tertile_bins(pulsecom, "tl_db", "dB")
-        ship_bins = _tertile_bins(ship, "snr_db", "dB")
-
-        return {
-            "PulseCom_TL": {
-                "name": ("PulseCom | Pre-normalization channel energy gain "
-                         "(legacy tl_db; higher = less attenuation)"),
-                "count": len(pulsecom),
-                "bins": pc_bins,
-            },
-            "Ship_SNR": {
-                "name": ("Ship | Source/pre-channel line-spectrum SNR "
-                         "(legacy snr_db; higher = stronger tonal component)"),
-                "count": len(ship),
-                "bins": ship_bins,
-            },
-        }
-
-    # ============================================================
     # Bootstrap 置信区间
     # ============================================================
 
@@ -340,56 +259,3 @@ class Scorer:
         lo = values[int(len(values) * tail)]
         hi = values[int(len(values) * (1.0 - tail))]
         return (lo, hi)
-
-    @staticmethod
-    def _get_quality_score(r) -> float | None:
-        """Return legacy tl_db channel gain (PulseCom) or source SNR (Ship)."""
-        if r.sample.gt["L1"] == "active":
-            return r.sample.metadata.get("tl_db")
-        else:
-            return r.sample.metadata.get("snr_db")
-
-    @staticmethod
-    def compute_per_class_quality_tertiles(results: list, class_keys: List[str]) -> dict:
-        """Measure each L3 class over within-class dynamic quality tertiles."""
-        classes: Dict[str, dict] = {}
-        degradation: Dict[str, float] = {}
-        for cls in class_keys:
-            cls_group = [r for r in results if r.sample.gt["L3"] == cls]
-            groups = Scorer._dynamic_tertiles(cls_group, Scorer._get_quality_score)
-            if not groups:
-                continue
-
-            is_active = cls_group[0].sample.gt["L1"] == "active"
-            metric_name = (
-                "Pre-normalization channel energy gain (legacy tl_db)"
-                if is_active else
-                "Source/pre-channel line-spectrum SNR (legacy snr_db)"
-            )
-            class_bins = []
-            for tier, members in groups:
-                values = [value for value, _ in members]
-                matched = [r for _, r in members]
-                correct = sum(1 for r in matched if r.turn2_pred.L3 == cls)
-                class_bins.append({
-                    "tier": tier,
-                    "count": len(matched),
-                    "min": values[0],
-                    "max": values[-1],
-                    "l3_acc": correct / len(matched),
-                })
-
-            classes[cls] = {
-                "metric": metric_name,
-                "unit": "dB",
-                "bins": class_bins,
-            }
-            low_acc = class_bins[0]["l3_acc"]
-            high_acc = class_bins[-1]["l3_acc"]
-            degradation[cls] = round(high_acc - low_acc, 4)
-
-        return {
-            "policy": "Within-class count-balanced dynamic tertiles",
-            "classes": classes,
-            "degradation": degradation,
-        }

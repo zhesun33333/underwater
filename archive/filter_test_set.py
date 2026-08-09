@@ -1,13 +1,15 @@
-"""
-从测试集中筛选高质量子集，构建 baseline 评估用的小型测试集。
+"""Build a favorable-condition, class-balanced diagnostic test subset.
 
-筛选策略:
-  PulseCom: TL (传播损失) 越高越好，信道畸变越小信号越清晰
-  Ship:     SNR (线谱/背景比) 越高越好，线谱特征越明显
-  每类平衡采样，避免分类偏差
+PulseCom is ranked by its pre-normalization channel energy gain (legacy
+``tl_db``); Ship is ranked by source/pre-channel line-spectrum SNR. A fixed
+seed samples each L3 from its highest-ranked candidate pool.
 
-用法:
-  python filter_test_set.py [--input dataset/sft_test.jsonl] [--n-per-class 200]
+Paper-scope note:
+  This subset is designed to test basic recognition under comparatively
+  favorable conditions. It must not be described as measuring robustness to
+  severe propagation, low observability, or the full operational domain.
+  PulseCom gain is measured before peak normalization and is not a direct
+  measure of post-normalization perceptual clarity.
 """
 import argparse
 import json
@@ -28,21 +30,21 @@ L3_NAMES = {
 }
 
 
-def select_quality_tier(pool: list, tier: str) -> list:
-    """Select a dynamic quality tertile; larger scores mean better quality."""
-    ranked = sorted(pool, key=lambda item: item[1])
-    if tier == "all" or len(ranked) < 3:
-        return ranked
-
-    low_end = len(ranked) // 3
-    high_start = (2 * len(ranked)) // 3
-    if tier == "low":
-        return ranked[:low_end]
-    if tier == "mid":
-        return ranked[low_end:high_start]
-    if tier == "high":
-        return ranked[high_start:]
-    raise ValueError(f"unknown quality tier: {tier}")
+def build_output_record(entry: tuple, rank: int, pool_size: int,
+                        candidate_pool_size: int) -> dict:
+    item, quality, gt, meta_out = entry
+    output_meta = dict(meta_out)
+    output_meta.update({
+        "quality_score": float(quality),
+        "quality_rank_within_l3": rank,
+        "quality_pool_size_within_l3": pool_size,
+        "candidate_pool_size_within_l3": candidate_pool_size,
+        "selection_policy": "class_balanced_favorable_candidate_pool",
+    })
+    out_record = {key: value for key, value in item.items() if key != "_meta"}
+    out_record["_gt"] = gt
+    out_record["_meta"] = output_meta
+    return out_record
 
 
 def find_meta(audio_base: Path, audio_rel: str, sample_id: str) -> Optional[dict]:
@@ -73,9 +75,13 @@ def find_meta(audio_base: Path, audio_rel: str, sample_id: str) -> Optional[dict
 
 def extract_quality_and_gt(meta: dict) -> tuple:
     """返回 (category, l3_key, quality_score, gt_dict, meta_dict)。
-    PulseCom: quality = TL (传播损失, dB), 越大信号越清晰
+    PulseCom: quality = 归一化前信道能量增益 (dB)，越大表示衰减越弱
     Ship:     quality = SNR (线谱/背景比, dB), 越大特征越明显
     gt_dict 跟 testsite extract_l1_l2_l3_from_meta 返回格式一致
+
+    PulseCom quality is a favorable-condition ranking variable, not a direct
+    post-normalization clarity score. Do not use this subset to claim channel
+    robustness or perceptual-quality coverage.
     """
     cat = meta.get("signal_category", "unknown")
     bo = meta.get("bellhop_output", {})
@@ -90,6 +96,7 @@ def extract_quality_and_gt(meta: dict) -> tuple:
         quality = float(tl) if tl is not None else -400.0
         if tl is not None:
             meta_out["tl_db"] = float(tl)
+            meta_out["quality_metric"] = "pre_normalization_channel_energy_gain_db"
         gt = {"L1": "active", "L2": "pulse" if cat == "pulse" else "communication", "L3": l3}
 
     elif cat == "radiated_noise":
@@ -103,6 +110,7 @@ def extract_quality_and_gt(meta: dict) -> tuple:
         quality = float(snr) if snr is not None else -400.0
         if snr is not None:
             meta_out["snr_db"] = float(snr)
+            meta_out["quality_metric"] = "source_pre_channel_line_spectrum_snr_db"
         gt = {"L1": "passive", "L2": "ship_noise", "L3": l3}
 
     else:
@@ -120,19 +128,26 @@ def extract_quality_and_gt(meta: dict) -> tuple:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Filter high-quality test set")
+    parser = argparse.ArgumentParser(description="Build a class-balanced benchmark test subset")
     parser.add_argument("--input", default="dataset/sft_test.jsonl")
     parser.add_argument("--output", default="dataset/sft_test_highquality.jsonl")
     parser.add_argument("--n-per-class", type=int, default=200,
-                        help="Max samples per L3 class (default: 200)")
-    parser.add_argument("--quality-tier", choices=("high", "mid", "low", "all"),
-                        default="high", help="Dynamic per-class quality tertile (default: high)")
+                        help="Required samples per L3 class (default: 200)")
+    parser.add_argument(
+        "--candidate-multiplier", type=float, default=2.0,
+        help=("Candidate-pool size relative to --n-per-class before deterministic "
+              "sampling (default: 2.0)"),
+    )
     parser.add_argument("--tl-min", type=float, default=None,
                         help="Optional PulseCom raw channel-gain floor in dB")
     parser.add_argument("--snr-min", type=float, default=None,
                         help="Optional Ship SNR floor in dB")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
+    if args.n_per_class <= 0:
+        parser.error("--n-per-class must be positive")
+    if args.candidate_multiplier < 1.0:
+        parser.error("--candidate-multiplier must be at least 1.0")
 
     jsonl_path = Path(args.input)
     if not jsonl_path.exists():
@@ -194,41 +209,68 @@ def main():
     print(f"  Skipped (no meta/unknown): {skipped_no_meta}")
     print(f"  Below quality threshold: {skipped_low_quality}")
     print(f"  Passed filter: {sum(len(v) for v in by_l3.values())}")
+    missing_classes = sorted(set(L3_NAMES) - set(by_l3))
+    if missing_classes:
+        print(f"ERROR: missing required L3 classes: {missing_classes}")
+        return 1
 
-    # ---- 第二遍: 每类按质量降序排序, 取前 N ----
+    # Paper wording guardrail: call this a favorable-condition diagnostic
+    # subset, not a robustness benchmark or a full-domain representative set.
+    # Describe selection as "deterministic sampling from a high-quality
+    # candidate pool", not as retaining the strict top-N samples.
+    # ---- 第二遍: 每类从高分候选池中确定性抽样 ----
     rng = random.Random(args.seed)
     selected = []
+    shortfalls = {}
 
-    print(f"\nFilter results ({args.quality_tier} tertile, max {args.n_per_class} per class):")
-    print(f"{'L3 Class':<20} {'Avail':>6} {'Tier':>6} {'Picked':>6} {'Quality Range':>20}")
-    print("-" * 64)
+    print(f"\nSelection results (favorable candidate pool, {args.n_per_class} per class):")
+    print(f"{'L3 Class':<35} {'Avail':>7} {'Candidates':>11} {'Picked':>8}")
+    print("-" * 65)
 
     for l3_key in sorted(by_l3.keys()):
         pool = by_l3[l3_key]
-        # 按质量降序排 (质量越高越好)
-        tier_pool = select_quality_tier(pool, args.quality_tier)
-        tier_pool.sort(key=lambda x: x[1], reverse=True)
-
-        # 取前 N, 但留一点随机性: 从前 2*N 中随机选 N
-        top_n = min(args.n_per_class * 2, len(tier_pool))
-        candidates = tier_pool[:top_n]
+        ranked = sorted(
+            pool,
+            key=lambda entry: (-entry[1], str(entry[0].get("id", ""))),
+        )
+        rank_by_id = {
+            str(entry[0].get("id", "")): rank
+            for rank, entry in enumerate(ranked, 1)
+        }
+        candidate_count = min(
+            len(ranked),
+            max(args.n_per_class, int(round(args.n_per_class * args.candidate_multiplier))),
+        )
+        candidates = ranked[:candidate_count]
         chosen = rng.sample(candidates, min(args.n_per_class, len(candidates)))
-
-        qualities = [c[1] for c in chosen]
+        chosen_count = len(chosen)
+        if chosen_count != args.n_per_class:
+            shortfalls[l3_key] = {
+                "required": args.n_per_class,
+                "selected": chosen_count,
+                "available": len(pool),
+            }
         name = L3_NAMES.get(l3_key, l3_key)
-        print(f"{name:<20} {len(pool):>6} {len(tier_pool):>6} {len(chosen):>6}  "
-              f"{min(qualities):.1f} ~ {max(qualities):.1f}")
+        print(
+            f"{name:<35} {len(pool):>7} {candidate_count:>11} {chosen_count:>8}"
+        )
+        for entry in chosen:
+            sample_id = str(entry[0].get("id", ""))
+            selected.append(build_output_record(
+                entry,
+                rank=rank_by_id[sample_id],
+                pool_size=len(pool),
+                candidate_pool_size=candidate_count,
+            ))
 
-        for item, _, gt, meta_out in chosen:
-            out_record = {k: v for k, v in item.items() if k != "_meta"}
-            out_record["_gt"] = gt
-            out_record["_meta"] = meta_out
-            selected.append(out_record)
-
-    print("-" * 64)
-    print(f"{'Total':<20} {sum(len(v) for v in by_l3.values()):>6} "
-          f"{sum(len(select_quality_tier(v, args.quality_tier)) for v in by_l3.values()):>6} "
-          f"{len(selected):>6}")
+    print("-" * 65)
+    print(
+        f"{'Total':<35} {sum(len(v) for v in by_l3.values()):>7} "
+        f"{'':>11} {len(selected):>8}"
+    )
+    if shortfalls:
+        print(f"ERROR: insufficient samples for requested formal subset: {shortfalls}")
+        return 1
 
     # ---- 输出 ----
     rng.shuffle(selected)

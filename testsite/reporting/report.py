@@ -3,10 +3,9 @@
 输出 Markdown 格式报告，包含:
   1. 层级分类 (L1/L2/L3 Acc, Per-class F1, Confusion)
   2. 层级联合指标 (L2|L1, L3|L2, Joint)
-  3. 分源质量分层 (PulseCom by TL, Ship by SNR)
-  4. 推理质量 (Domain Term Match)
-  5. Parse Tier 分布
-  6. 结论与建议
+  3. 推理质量 (Domain Term Match)
+  4. Parse Tier 分布
+  5. 结论与建议
 """
 
 import json
@@ -33,12 +32,6 @@ class ReportGenerator:
             self._hierarchical_section(hierarchical),
             self._joint_section(hierarchical),
         ]
-
-        if hierarchical.source_stratified:
-            sections.append(self._source_stratified_section(hierarchical.source_stratified))
-
-        if hierarchical.per_class_quality:
-            sections.append(self._per_class_quality_section(hierarchical.per_class_quality))
 
         if reasoning:
             sections.append(self._reasoning_section(reasoning))
@@ -77,10 +70,6 @@ class ReportGenerator:
         if h.l3 and h.l3.confusion_matrix:
             result["l3_confusion_matrix"] = h.l3.confusion_matrix
             result["l3_confusion_labels"] = h.l3.confusion_labels
-        if h.source_stratified:
-            result["source_stratified"] = h.source_stratified
-        if h.per_class_quality:
-            result["per_class_quality"] = h.per_class_quality
         if r:
             result["reasoning"] = {
                 "alignment_rate": r.alignment_rate,
@@ -136,67 +125,9 @@ class ReportGenerator:
 """
 
     @staticmethod
-    def _source_stratified_section(data: dict) -> str:
-        lines = [
-            "---\n## 3. Source-Stratified Quality\n",
-            ("PulseCom is ranked by pre-normalization channel energy gain; Ship is "
-             "ranked by source/pre-channel line-spectrum SNR. Each source family is "
-             "split into count-balanced dynamic tertiles.\n"),
-        ]
-        for src_key in ["PulseCom_TL", "Ship_SNR"]:
-            src = data.get(src_key, {})
-            if not src or not src.get("bins"):
-                continue
-            lines.append(f"### {src.get('name', src_key)}")
-            lines.append(f"Total samples: {src.get('count', 0)}\n")
-            lines.append("| Bin | Count | L3 Accuracy | Cascade Rate |")
-            lines.append("|------|--------|-------------|-------------|")
-            for b in src["bins"]:
-                lines.append(
-                    f"| {b['label']} | {b['count']} | **{b['l3_acc']:.2%}** | **{b['cascade_rate']:.2%}** |")
-            lines.append("")
-        return "\n".join(lines)
-
-    @staticmethod
-    def _per_class_quality_section(data: dict) -> str:
-        classes = data.get("classes", {})
-        degradation = data.get("degradation", {})
-        if not classes:
-            return ""
-
-        lines = [
-            "---\n## Per-Class Dynamic Quality-Tertile Analysis\n",
-            f"Policy: {data.get('policy', 'count-balanced dynamic tertiles')}\n",
-        ]
-
-        for cls in sorted(classes):
-            class_data = classes[cls]
-            lines.append(f"### {cls}")
-            lines.append(f"Metric: {class_data.get('metric', 'quality score')}\n")
-            lines.append("| Dynamic tertile | Count | Value range | L3 Accuracy |")
-            lines.append("|---|---:|---:|---:|")
-            for item in class_data.get("bins", []):
-                lines.append(
-                    f"| {item['tier']} | {item['count']} | "
-                    f"{item['min']:.2f} to {item['max']:.2f} {class_data.get('unit', '')} | "
-                    f"**{item['l3_acc']:.2%}** |"
-                )
-            lines.append("")
-
-        if degradation:
-            lines.append("### Accuracy Change from Low to High Tertile\n")
-            lines.append("| Class | High minus Low |")
-            lines.append("|---|---:|")
-            for cls, drop in sorted(degradation.items(), key=lambda x: -x[1]):
-                lines.append(f"| {cls} | {drop:.1%} |")
-            lines.append("")
-
-        return "\n".join(lines)
-
-    @staticmethod
     def _reasoning_section(r: ReasoningMetrics) -> str:
         return f"""---
-## 4. Reasoning Quality
+## 3. Reasoning Quality
 
 | Metric | Value |
 |------|------|
@@ -209,7 +140,7 @@ class ReportGenerator:
 
     @staticmethod
     def _parse_tier_section(h: HierarchicalMetrics) -> str:
-        lines = ["---\n## 5. Parse Tier Distribution\n"]
+        lines = ["---\n## 4. Parse Tier Distribution\n"]
         lines.append("| Tier | Count | Ratio |")
         lines.append("|------|--------|------|")
         for tier in sorted(h.parse_tier_dist.keys()):
@@ -220,7 +151,7 @@ class ReportGenerator:
 
     @staticmethod
     def _recommendations(h: HierarchicalMetrics) -> str:
-        lines = ["---\n## 6. Conclusions and Recommendations\n"]
+        lines = ["---\n## 5. Conclusions and Recommendations\n"]
         if h.l3 and h.l3.accuracy < 0.30:
             lines.append("- L3 accuracy is low; consider checking if the taxonomy is overly fine-grained or training data is insufficient.")
         if h.l3 and h.l3.per_class:

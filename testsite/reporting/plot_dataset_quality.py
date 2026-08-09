@@ -1,14 +1,19 @@
 #!/usr/bin/env python
 """Plot the real UA-Bench evaluation-set characterization figure.
 
-The script reads the exact JSONL and WAV files used by testsite.  In strict
+The script reads the exact JSONL and WAV files used by testsite. In strict
 mode (the default), it refuses to write paper figures unless the manifest has
 2,600 valid examples, every L3 class has support 200, every WAV exists, and the
 metadata needed by the distribution panels are available.
 
+Paper-scope note:
+  The exported subset is a favorable-condition diagnostic benchmark. The
+  figure illustrates class structure; it must not be used to claim robustness
+  to severe channels or full operational-domain coverage.
+
 Example
 -------
-python scripts/plot_dataset_quality.py \
+python -m testsite.reporting.plot_dataset_quality \
   --manifest D:/path/testset_export/sft_test_highquality.jsonl \
   --audio-root D:/path/testset_export \
   --metadata-root D:/path/processed_audio \
@@ -27,11 +32,23 @@ from typing import Any
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 from matplotlib.colors import Normalize
 from matplotlib.patches import FancyBboxPatch
 import numpy as np
 from scipy.signal import stft
 import soundfile as sf
+
+try:
+    from .plot_style import (
+        BLUE, ORANGE, TEAL, apply_publication_style,
+        save_figure, style_axis,
+    )
+except ImportError:  # Allow direct execution from testsite/reporting.
+    from plot_style import (  # type: ignore
+        BLUE, ORANGE, TEAL, apply_publication_style,
+        save_figure, style_axis,
+    )
 
 
 ORDER = [
@@ -49,7 +66,7 @@ GROUPS = {
     "Communication": ORDER[3:8],
     "Ship noise": ORDER[8:],
 }
-COLORS = {"Pulse": "#4C78A8", "Communication": "#F28E2B", "Ship noise": "#2A9D8F"}
+COLORS = {"Pulse": BLUE, "Communication": ORANGE, "Ship noise": TEAL}
 L2_FOR = {key: group for group, keys in GROUPS.items() for key in keys}
 
 
@@ -65,6 +82,9 @@ class Sample:
     tl_db: float | None
     snr_db: float | None
     center_frequency_hz: float | None
+    quality_score: float | None
+    quality_metric: str | None
+    selection_policy: str | None
     raw_record: dict[str, Any]
 
 
@@ -177,6 +197,11 @@ def load_samples(manifest: Path, audio_root: Path, metadata_root: Path | None) -
             embedded = record.get("_meta") or {}
             full_meta = _load_full_metadata(metadata_root, audio_rel, sample_id)
             output = full_meta.get("bellhop_output") or {}
+            tl_db = _number(embedded.get("tl_db", output.get("tl_db")))
+            snr_db = _number(embedded.get("snr_db", output.get("snr_db")))
+            quality_score = _number(embedded.get("quality_score"))
+            if quality_score is None:
+                quality_score = snr_db if l2 == "ship_noise" else tl_db
             samples.append(Sample(
                 sample_id=sample_id,
                 audio_path=audio_path,
@@ -185,9 +210,12 @@ def load_samples(manifest: Path, audio_root: Path, metadata_root: Path | None) -
                 l3=l3,
                 duration_s=float(info.frames / info.samplerate),
                 sample_rate_hz=int(info.samplerate),
-                tl_db=_number(embedded.get("tl_db", output.get("tl_db"))),
-                snr_db=_number(embedded.get("snr_db", output.get("snr_db"))),
+                tl_db=tl_db,
+                snr_db=snr_db,
                 center_frequency_hz=_extract_frequency(full_meta),
+                quality_score=quality_score,
+                quality_metric=embedded.get("quality_metric"),
+                selection_policy=embedded.get("selection_policy"),
                 raw_record=record,
             ))
     if problems:
@@ -222,33 +250,44 @@ def validate_paper_subset(samples: list[Sample], strict: bool) -> None:
             )
 
 
+def _robust_medoid(pool: list[Sample], targets: dict[str, float] | None = None) -> Sample:
+    """Select a deterministic sample nearest robust-scaled feature targets."""
+    durations = np.asarray([sample.duration_s for sample in pool], dtype=float)
+    quality = np.asarray([
+        float(sample.quality_score) if sample.quality_score is not None else np.nan
+        for sample in pool
+    ])
+    frequencies = np.asarray([
+        float(sample.center_frequency_hz) if sample.center_frequency_hz is not None else np.nan
+        for sample in pool
+    ])
+    named_features = [("duration", durations)]
+    if np.isfinite(quality).all():
+        named_features.append(("quality", quality))
+    if pool[0].l1 == "active" and np.isfinite(frequencies).all():
+        named_features.append(("frequency", frequencies))
+    matrix = np.column_stack([values for _, values in named_features])
+    medians = np.asarray([
+        (targets or {}).get(name, float(np.median(values)))
+        for name, values in named_features
+    ])
+    scales = np.subtract(*np.percentile(matrix, [75, 25], axis=0))
+    scales[scales == 0] = 1.0
+    distances = np.sqrt(np.square((matrix - medians) / scales).sum(axis=1))
+    ranked = sorted(zip(distances, pool), key=lambda item: (float(item[0]), item[1].sample_id))
+    return ranked[0][1]
+
+
 def select_representatives(samples: list[Sample]) -> dict[str, Sample]:
+    # Paper wording guardrail: these are illustrative class examples selected
+    # from the evaluation manifest, not population-representative exemplars.
     by_class: dict[str, list[Sample]] = defaultdict(list)
     for sample in samples:
         by_class[sample.l3].append(sample)
     selected: dict[str, Sample] = {}
     for l3 in ORDER:
         pool = by_class[l3]
-        durations = np.asarray([sample.duration_s for sample in pool], dtype=float)
-        quality = np.asarray([
-            sample.snr_db if sample.l2 == "ship_noise" else sample.tl_db
-            for sample in pool
-        ], dtype=float)
-        frequencies = np.asarray([sample.center_frequency_hz for sample in pool], dtype=float)
-        features = [durations]
-        # Use only complete class-level metadata dimensions. Strict paper mode
-        # guarantees these fields; the conditional checks keep smoke tests usable.
-        if np.isfinite(quality).all():
-            features.append(quality)
-        if pool[0].l1 == "active" and np.isfinite(frequencies).all():
-            features.append(frequencies)
-        matrix = np.column_stack(features)
-        medians = np.median(matrix, axis=0)
-        scales = np.subtract(*np.percentile(matrix, [75, 25], axis=0))
-        scales[scales == 0] = 1.0
-        distances = np.sqrt(np.square((matrix - medians) / scales).sum(axis=1))
-        ranked = sorted(zip(distances, pool), key=lambda item: (float(item[0]), item[1].sample_id))
-        selected[l3] = ranked[0][1]
+        selected[l3] = _robust_medoid(pool)
     return selected
 
 
@@ -277,12 +316,21 @@ def _ecdf(ax, values: list[float], color: str, label: str | None = None) -> None
 
 
 def _style_axis(ax, grid_axis: str = "both") -> None:
-    for spine in ax.spines.values():
-        spine.set_color("#9AA5AE")
-        spine.set_linewidth(.6)
-    ax.grid(axis=grid_axis, color="#D7DEE3", linestyle="-.", linewidth=.55, alpha=.8)
-    ax.set_axisbelow(True)
-    ax.tick_params(direction="in", top=True, right=True, length=2.5, width=.6)
+    style_axis(
+        ax, grid_axis, minor_grid=False,
+        tick_length=2.5, tick_width=.6,
+    )
+
+
+def _format_time_axis(ax, times: np.ndarray) -> None:
+    """Keep dense spectrogram time axes legible at paper scale."""
+    if len(times) > 1:
+        ax.set_xlim(max(0.0, float(times[0])), float(times[-1]))
+    ax.margins(x=0)
+    ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=4, min_n_ticks=3))
+    formatter = mticker.ScalarFormatter(useOffset=False)
+    formatter.set_powerlimits((-3, 4))
+    ax.xaxis.set_major_formatter(formatter)
 
 
 def draw_hierarchy(ax, counts: Counter) -> None:
@@ -290,7 +338,7 @@ def draw_hierarchy(ax, counts: Counter) -> None:
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.text(.01, .88, "(a) Evaluation hierarchy and support", fontsize=10, weight="bold")
-    ax.text(.01, .56, f"{sum(counts.values()):,} quality-selected\nheld-out examples",
+    ax.text(.01, .56, f"{sum(counts.values()):,} favorable-condition\nheld-out examples",
             ha="left", va="center", fontsize=8.5)
     positions = {"Pulse": .36, "Communication": .61, "Ship noise": .86}
     for group, x in positions.items():
@@ -307,54 +355,62 @@ def draw_hierarchy(ax, counts: Counter) -> None:
 
 
 def plot_figure(samples: list[Sample], selected: dict[str, Sample], output: Path,
-                n_fft: int, hop: int, fmin: float, db_floor: float) -> None:
-    plt.rcParams.update({
-        "font.family": "Times New Roman", "font.size": 8,
-        "axes.titlesize": 8.5, "axes.labelsize": 8,
-        "xtick.labelsize": 7, "ytick.labelsize": 7,
-        "figure.facecolor": "white", "savefig.facecolor": "white",
-    })
+                n_fft: int, hop: int, fmin: float, db_floor: float,
+                dpi: int = 300) -> None:
     counts = Counter(sample.l3 for sample in samples)
     spectra = {key: compute_spectrogram(sample, n_fft, hop, fmin) for key, sample in selected.items()}
     reference_db = max(float(values[2].max()) for values in spectra.values())
     norm = Normalize(vmin=db_floor, vmax=0)
 
-    fig = plt.figure(figsize=(13.4, 10.0), constrained_layout=True)
+    fig = plt.figure(figsize=(15.4, 10.2), constrained_layout=True)
     outer = fig.add_gridspec(3, 1, height_ratios=[.72, 3.0, 1.15])
     hierarchy_ax = fig.add_subplot(outer[0])
     draw_hierarchy(hierarchy_ax, counts)
 
-    atlas = outer[1].subgridspec(4, 5, height_ratios=[.13, 1, 1, 1], wspace=.16, hspace=.26)
+    atlas = outer[1].subgridspec(
+        4, 2, height_ratios=[.13, 1, 1, 1],
+        width_ratios=[1, .022], hspace=.26, wspace=.05,
+    )
     atlas_title = fig.add_subplot(atlas[0, :])
     atlas_title.set_axis_off()
     atlas_title.text(
         0, .5, "(b) Deterministically selected L3 examples under a shared STFT and dB scale",
         va="center", fontsize=10, weight="bold",
     )
-    positions = [(1, i) for i in (0, 2, 4)] + [(2, i) for i in range(5)] + [(3, i) for i in range(5)]
     image = None
-    spectrogram_axes = []
-    for key, (row, col) in zip(ORDER, positions):
-        ax = fig.add_subplot(atlas[row, col])
-        spectrogram_axes.append(ax)
-        frequencies, times, db = spectra[key]
-        relative = np.clip(db - reference_db, db_floor, 0)
-        image = ax.pcolormesh(times, frequencies, relative, shading="auto", cmap="magma", norm=norm, rasterized=True)
-        ax.set_yscale("log")
-        ax.set_ylim(max(fmin, frequencies[0]), frequencies[-1])
-        ax.set_title(f"{DISPLAY[key]}  |  {selected[key].duration_s:.2f} s",
-                     color=COLORS[L2_FOR[key]], pad=2.5)
-        ax.set_xlabel("Time (s)")
-        if col == 0:
-            ax.set_ylabel("Frequency (Hz)")
-        else:
-            ax.set_yticklabels([])
-        _style_axis(ax)
-    for col in (1, 3):
-        ax = fig.add_subplot(atlas[1, col])
-        ax.axis("off")
+    atlas_rows = (
+        (GROUPS["Pulse"], atlas[1, 0].subgridspec(1, 3, wspace=.16)),
+        (GROUPS["Communication"], atlas[2, 0].subgridspec(1, 5, wspace=.16)),
+        (GROUPS["Ship noise"], atlas[3, 0].subgridspec(1, 5, wspace=.16)),
+    )
+    for keys, row_grid in atlas_rows:
+        for col, key in enumerate(keys):
+            ax = fig.add_subplot(row_grid[0, col])
+            frequencies, times, db = spectra[key]
+            relative = np.clip(db - reference_db, db_floor, 0)
+            image = ax.pcolormesh(
+                times, frequencies, relative, shading="auto",
+                cmap="magma", norm=norm, rasterized=True,
+            )
+            _format_time_axis(ax, times)
+            ax.set_yscale("log")
+            ax.set_ylim(max(fmin, frequencies[0]), frequencies[-1])
+            ax.set_title(
+                f"{DISPLAY[key]}  |  {selected[key].duration_s:.2f} s",
+                color=COLORS[L2_FOR[key]], pad=2.5,
+            )
+            ax.set_xlabel("Time (s)")
+            if col == 0:
+                ax.set_ylabel("Frequency (Hz)")
+            else:
+                ax.set_yticklabels([])
+            _style_axis(ax)
     if image is not None:
-        colorbar = fig.colorbar(image, ax=spectrogram_axes, location="right", shrink=.62, pad=.012)
+        colorbar_grid = atlas[1:, 1].subgridspec(
+            3, 1, height_ratios=[.18, .64, .18],
+        )
+        colorbar_ax = fig.add_subplot(colorbar_grid[1, 0])
+        colorbar = fig.colorbar(image, cax=colorbar_ax)
         colorbar.set_label("Relative power (dB; common reference)")
 
     dist = outer[2].subgridspec(2, 4, height_ratios=[.14, 1], wspace=.28)
@@ -400,10 +456,7 @@ def plot_figure(samples: list[Sample], selected: dict[str, Sample], output: Path
     ax.set_xlabel("Source/pre-channel line-SNR (dB)"); ax.set_ylabel("ECDF")
     ax.set_title(f"Ship line-SNR (n={len(ship_snr):,}; miss={len(ships)-len(ship_snr):,})")
     _style_axis(ax)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output.with_suffix(".pdf"))
-    fig.savefig(output.with_suffix(".png"), dpi=300)
-    plt.close(fig)
+    save_figure(fig, output, dpi=dpi)
 
 
 def write_selection_record(path: Path, manifest: Path, audio_root: Path,
@@ -413,7 +466,11 @@ def write_selection_record(path: Path, manifest: Path, audio_root: Path,
         "audio_root": str(audio_root.resolve()),
         "selection_rule": "minimum robust-scaled distance to class medians of duration, family quality metadata, and active center/carrier frequency; sample_id tie-break",
         "stft": {"n_fft": args.n_fft, "hop_length": args.hop_length, "window": "hann", "fmin_hz": args.fmin},
-        "display": {"power_db_floor": args.db_floor, "reference": "maximum STFT-bin power shared across all 13 selected examples"},
+        "display": {
+            "power_db_floor": args.db_floor,
+            "reference": "maximum STFT-bin power shared across all 13 selected examples",
+            "raster_dpi": getattr(args, "dpi", 300),
+        },
         "samples": {
             key: {
                 "sample_id": sample.sample_id,
@@ -423,6 +480,9 @@ def write_selection_record(path: Path, manifest: Path, audio_root: Path,
                 "tl_db": sample.tl_db,
                 "snr_db": sample.snr_db,
                 "center_frequency_hz": sample.center_frequency_hz,
+                "quality_score": sample.quality_score,
+                "quality_metric": sample.quality_metric,
+                "selection_policy": sample.selection_policy,
             }
             for key, sample in selected.items()
         },
@@ -433,7 +493,7 @@ def write_selection_record(path: Path, manifest: Path, audio_root: Path,
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Plot the real UA-Bench evaluation-set quality figure")
-    parser.add_argument("--manifest", type=Path, required=True, help="Exact sft_test_highquality.jsonl used for evaluation")
+    parser.add_argument("--manifest", type=Path, required=True, help="Exact exported JSONL used for evaluation")
     parser.add_argument("--audio-root", type=Path, required=True, help="Root used to resolve each record's audio path")
     parser.add_argument("--metadata-root", type=Path, default=None, help="processed_audio root containing full JSON/JSONC metadata")
     parser.add_argument("--output", type=Path, default=Path("figures/fig2"), help="Output prefix without extension")
@@ -445,6 +505,7 @@ def main() -> int:
     parser.add_argument("--hop-length", type=int, default=256)
     parser.add_argument("--fmin", type=float, default=20.0)
     parser.add_argument("--db-floor", type=float, default=-80.0)
+    parser.add_argument("--dpi", type=int, default=300, help="Raster output DPI (default: 300)")
     parser.add_argument("--allow-nonpaper-subset", action="store_true", help="Allow smoke tests on a non-2,600 subset")
     args = parser.parse_args()
 
@@ -454,16 +515,34 @@ def main() -> int:
         parser.error(f"audio root not found: {args.audio_root}")
     if args.metadata_root is not None and not args.metadata_root.exists():
         parser.error(f"metadata root not found: {args.metadata_root}")
+    chosen_font = apply_publication_style(
+        font_size=8,
+        title_size=8.5,
+        label_size=8,
+        tick_size=7,
+        legend_size=6.5,
+    )
+    print(f"Plot font: {chosen_font}")
     samples = load_samples(args.manifest, args.audio_root, args.metadata_root)
     validate_paper_subset(samples, strict=not args.allow_nonpaper_subset)
     selected = select_representatives(samples)
-    plot_figure(samples, selected, args.output, args.n_fft, args.hop_length, args.fmin, args.db_floor)
+    plot_figure(
+        samples, selected, args.output, args.n_fft, args.hop_length,
+        args.fmin, args.db_floor, args.dpi,
+    )
+    print(
+        f"  [OK] Main characterization: {args.output.with_suffix('.png')} "
+        f"and {args.output.with_suffix('.pdf')}"
+    )
+
     selection_record = args.selection_record or args.output.with_name(
         f"{args.output.name}_selection.json"
     )
-    write_selection_record(selection_record, args.manifest, args.audio_root, selected, args)
+    write_selection_record(
+        selection_record, args.manifest, args.audio_root,
+        selected, args,
+    )
     counts = Counter(sample.l3 for sample in samples)
-    print(f"Generated {args.output.with_suffix('.pdf')} and {args.output.with_suffix('.png')}")
     print(f"Selection record: {selection_record}")
     print("Class support: " + ", ".join(f"{key}={counts[key]}" for key in ORDER))
     return 0
