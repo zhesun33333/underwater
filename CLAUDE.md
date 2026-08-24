@@ -71,6 +71,7 @@ underwater/
 | `qwen2_audio` | Qwen2-Audio-7B | 7B | Done (L3≈8.0%) |
 | `aero1_audio` | Aero-1-Audio (LMMs-Lab) | 1.5B | Done (L3≈8.1%) |
 | `voxtral_mini` | Voxtral-Mini-3B (Mistral) | 3B | Done |
+| `voxtral_small` | Voxtral-Small-24B-2507 (Mistral) | 24B | Vast.ai 4x A100 80GB scripts ready; GPU validation pending |
 | `af_next` | Audio-Flamingo-Next (NVIDIA) | 7B | Gated — needs HF auth |
 | `kimi_audio` | Kimi-Audio-7B (Moonshot) | 10B | Needs Ampere GPU (V100 doesn't work) |
 
@@ -89,17 +90,19 @@ underwater/
 ## Model paths on server
 ```
 # Qwen2-Audio-7B
-/home/autodl-tmp/models/models/Qwen2-Audio-7B-Instruct/snapshots/master
+$HOME/autodl-tmp/models/models/Qwen2-Audio-7B-Instruct/snapshots/master
 # Aero-1-Audio
-/home/autodl-tmp/models/lmms-lab/Aero-1-Audio
+$HOME/autodl-tmp/models/lmms-lab/Aero-1-Audio
 # Voxtral-Mini-3B
-/home/autodl-tmp/models/mistralai/Voxtral-Mini-3B-2507
+$HOME/autodl-tmp/models/mistralai/Voxtral-Mini-3B-2507
+# Voxtral-Small-24B (Vast.ai default)
+/workspace/models/Voxtral-Small-24B-2507
 # Kimi-Audio-7B (ModelScope)
-/home/autodl-tmp/models/models/moonshotai--Kimi-Audio-7B-Instruct/snapshots/master
+$HOME/autodl-tmp/models/models/moonshotai--Kimi-Audio-7B-Instruct/snapshots/master
 ```
 
 ## Known quirks
-- VoxtralMiniBackend: encoder-decoder (VoxtralForConditionalGeneration, not AutoModelForCausalLM), uses MistralCommonTokenizer, audio format is `{"type": "audio", "path": "..."}`
+- VoxtralBackend: encoder-decoder (VoxtralForConditionalGeneration, not AutoModelForCausalLM), native tensor batching, audio format is `{"type": "audio", "path": "..."}`
 - Aero1AudioBackend: needed `sed -i 's/Qwen2AudioFlashAttention2/Qwen2AudioAttention/' modeling_aero.py` (transformers rename)
 - KimiAudioBackend: needs `from kimia_infer.api.kimia import KimiAudio`, FlashAttention (Ampere+), additionally downloads whisper-large-v3
 - All backends: `--backend` and `--model-id` CLI args override YAML config

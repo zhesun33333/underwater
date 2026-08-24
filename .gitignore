@@ -20,3 +20,11 @@ temp_bellhop/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local evaluation outputs
+testsite/outputs/
+eval_results/
+
+# Downloaded datasets and archives (stored on Hugging Face, not in Git)
+dataset/*.jsonl
+/testset_export.tar.gz

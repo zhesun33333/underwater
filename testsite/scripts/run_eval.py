@@ -11,7 +11,14 @@
 
 import sys
 import argparse
+import json
+import os
 from pathlib import Path
+
+# libgomp requires a positive integer. Some rented GPU images export this as an
+# empty or malformed value, producing warnings before model inference starts.
+if not os.environ.get("OMP_NUM_THREADS", "").isdigit() or int(os.environ.get("OMP_NUM_THREADS", "0")) < 1:
+    os.environ["OMP_NUM_THREADS"] = "8"
 
 project_root = Path(__file__).resolve().parent.parent.parent
 if str(project_root) not in sys.path:
@@ -35,6 +42,12 @@ def main():
                         help="Test data JSONL path (default: mock mode)")
     parser.add_argument("--audio-root", type=str, default="processed_audio",
                         help="Processed audio root directory")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Load only the first N real samples (smoke testing)")
+    parser.add_argument("--num-shards", type=int, default=1,
+                        help="Split the manifest deterministically across N workers")
+    parser.add_argument("--shard-index", type=int, default=0,
+                        help="Zero-based worker index used with --num-shards")
     parser.add_argument("--mock", type=int, default=None,
                         help="Generate N mock samples (default: 50 when no data)")
     parser.add_argument("--output-dir", type=str, default="eval_results",
@@ -44,11 +57,22 @@ def main():
                         help="Run ablation experiments")
     parser.add_argument("--backend", type=str, default=None,
                         choices=["mock", "qwen2_audio", "aero1_audio",
-                                 "voxtral_mini", "af_next", "kimi_audio"],
+                                 "voxtral_mini", "voxtral_small", "af_next", "kimi_audio",
+                                 "qwen25_omni", "minicpmo", "gemma4",
+                                 "midashenglm"],
                         help="Override model.backend in config")
     parser.add_argument("--model-id", type=str, default=None,
                         help="Override model.model_id in config")
+    parser.add_argument("--batch-size", type=int, default=None,
+                        help="True generation batch size where the backend supports it")
+    parser.add_argument("--device", type=str, default=None,
+                        help="Device/device_map override, e.g. auto or cuda:0")
+    parser.add_argument("--attn-implementation", type=str, default=None,
+                        choices=["flash_attention_2", "sdpa"],
+                        help="Attention backend override")
     args = parser.parse_args()
+    if args.num_shards < 1 or not 0 <= args.shard_index < args.num_shards:
+        parser.error("require num-shards >= 1 and 0 <= shard-index < num-shards")
 
     # ============================================================
     # 1. 加载配置
@@ -62,6 +86,12 @@ def main():
         config["model"]["backend"] = args.backend
     if args.model_id:
         config["model"]["model_id"] = args.model_id
+    if args.batch_size:
+        config["model"]["batch_size"] = args.batch_size
+    if args.device:
+        config["model"]["device"] = args.device
+    if args.attn_implementation:
+        config["model"]["attn_implementation"] = args.attn_implementation
 
     # Auto-create subdirectory per model to avoid overwriting results
     backend_name = config["model"]["backend"]
@@ -75,7 +105,9 @@ def main():
 
     if args.data:
         print(f"\nLoading test data: {args.data}")
-        samples = loader.load(jsonl_path=args.data, audio_root=args.audio_root)
+        samples = loader.load(jsonl_path=args.data, audio_root=args.audio_root,
+                              limit=args.limit, shard_index=args.shard_index,
+                              num_shards=args.num_shards)
     else:
         n_mock = args.mock if args.mock is not None else 50
         print(f"\nNo data file, using mock mode ({n_mock} samples)")
@@ -100,7 +132,22 @@ def main():
     print(f"{'=' * 60}")
 
     multi_eval = MultiTurnEvaluator(config, inference)
-    hier_metrics, reasoning, _ = multi_eval.evaluate(samples)
+    hier_metrics, reasoning, turn_results = multi_eval.evaluate(samples)
+    output_path = Path(args.output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    predictions_path = output_path / f"predictions_shard_{args.shard_index:03d}.jsonl"
+    with predictions_path.open("w", encoding="utf-8") as fout:
+        for r in turn_results:
+            fout.write(json.dumps({
+                "sample_id": r.sample.sample_id, "gt": r.sample.gt,
+                "metadata": r.sample.metadata,
+                "turn1_pred": r.turn1_pred.L1,
+                "turn1_output": r.turn1_output,
+                "turn2_pred": {"L1": r.turn2_pred.L1, "L2": r.turn2_pred.L2,
+                               "L3": r.turn2_pred.L3, "parse_tier": r.turn2_pred.parse_tier},
+                "turn2_output": r.turn2_output, "turn3_output": r.turn3_output,
+                "cascade_skipped": r.cascade_skipped,
+            }, ensure_ascii=False) + "\n")
 
     print(f"  T1 L1 Accuracy:     {hier_metrics.l1.accuracy:.2%}")
     print(f"  T2 L2 Accuracy:     {hier_metrics.l2.accuracy:.2%}")

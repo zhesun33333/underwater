@@ -5,8 +5,13 @@
   - qwen2_audio:      Qwen2-Audio-7B-Instruct
   - aero1_audio:      Aero-1-Audio (1.5B, LMMs-Lab)
   - voxtral_mini:     Voxtral-Mini-3B-2507 (Mistral)
-  - af_next:          Audio-Flamingo-Next (7B, NVIDIA)
+  - voxtral_small:    Voxtral-Small-24B-2507 (Mistral)
+  - af_next:          Audio-Flamingo-Next (8B, NVIDIA)
   - kimi_audio:       Kimi-Audio-7B-Instruct (Moonshot, ~10B)
+  - qwen25_omni:      Qwen2.5-Omni-7B
+  - minicpmo:         MiniCPM-o 2.6
+  - gemma4:           Gemma 4 E2B IT (Google)
+  - midashenglm:      MiDashengLM-7B-1021-BF16 (Xiaomi)
 """
 import random
 
@@ -25,16 +30,28 @@ class ModelInference:
         self._model = cls(model_cfg)
 
     def generate(self, audio_path: str, prompt: str,
-                 max_new_tokens: int = 512, temperature: float = 0.1,
+                 max_new_tokens: int = None, temperature: float = None,
                  no_audio: bool = False) -> str:
         return self._model.generate(audio_path, prompt, max_new_tokens,
                                      temperature, no_audio=no_audio)
 
     def chat(self, audio_path: str, conversations: list,
-             max_new_tokens: int = 512, temperature: float = 0.1,
+             max_new_tokens: int = None, temperature: float = None,
              no_audio: bool = False) -> str:
         return self._model.chat(audio_path, conversations, max_new_tokens,
                                  temperature, no_audio=no_audio)
+
+    def generate_batch(self, audio_paths: list, prompts: list,
+                       max_new_tokens: int = None, temperature: float = None,
+                       no_audio: bool = False) -> list:
+        return self._model.generate_batch(audio_paths, prompts, max_new_tokens,
+                                          temperature, no_audio=no_audio)
+
+    def chat_batch(self, audio_paths: list, conversations: list,
+                   max_new_tokens: int = None, temperature: float = None,
+                   no_audio: bool = False) -> list:
+        return self._model.chat_batch(audio_paths, conversations, max_new_tokens,
+                                      temperature, no_audio=no_audio)
 
 
 # ============================================================
@@ -56,6 +73,7 @@ class _BaseAudioBackend:
         self.torch_dtype = getattr(torch, model_cfg.get("torch_dtype", "bfloat16"))
         self.max_new_tokens = model_cfg.get("max_new_tokens", 256)
         self.default_temperature = model_cfg.get("temperature", 0.0)
+        self.attn_implementation = model_cfg.get("attn_implementation")
 
         print(f"  Loading {self.__class__.__name__}: {self.model_id}")
         print(f"  device={self.device}, dtype={self.torch_dtype}")
@@ -88,6 +106,16 @@ class _BaseAudioBackend:
         max_t = max_new_tokens or self.max_new_tokens
         temp = temperature if temperature is not None else self.default_temperature
         return self._infer(audio_path, None, conversations, max_t, temp, no_audio)
+
+    def generate_batch(self, audio_paths, prompts, max_new_tokens=None,
+                       temperature=None, no_audio=False):
+        return [self.generate(a, p, max_new_tokens, temperature, no_audio)
+                for a, p in zip(audio_paths, prompts)]
+
+    def chat_batch(self, audio_paths, conversations, max_new_tokens=None,
+                   temperature=None, no_audio=False):
+        return [self.chat(a, c, max_new_tokens, temperature, no_audio)
+                for a, c in zip(audio_paths, conversations)]
 
     def _infer(self, audio_path, prompt, conversations,
                max_new_tokens, temperature, no_audio):
@@ -191,98 +219,602 @@ class Aero1AudioBackend(_BaseAudioBackend):
 
 
 # ============================================================
-# Voxtral-Mini-3B (Mistral AI)
-# https://huggingface.co/mistralai/Voxtral-Mini-3B-2507
+# Voxtral Mini 3B / Small 24B (Mistral AI)
+# https://huggingface.co/docs/transformers/model_doc/voxtral
 # ============================================================
-class VoxtralMiniBackend(_BaseAudioBackend):
-    """Voxtral-Mini-3B by Mistral. apply_chat_template 直接返回 tensor。"""
+class VoxtralBackend(_BaseAudioBackend):
+    """Official Voxtral backend with native conversation batching."""
 
     def _load_model(self):
         from transformers import VoxtralForConditionalGeneration
-        return VoxtralForConditionalGeneration.from_pretrained(
-            self.model_id, torch_dtype=self.torch_dtype,
+        kwargs = dict(
+            torch_dtype=self.torch_dtype,
             device_map=self.device if self.device.startswith("cuda") else self.device,
             low_cpu_mem_usage=True,
         )
+        if self.attn_implementation:
+            kwargs["attn_implementation"] = self.attn_implementation
+        return VoxtralForConditionalGeneration.from_pretrained(
+            self.model_id, **kwargs).eval()
 
     def _load_processor(self):
         from transformers import AutoProcessor
         return AutoProcessor.from_pretrained(self.model_id)
 
-    def _infer(self, audio_path, prompt, conversations,
-               max_new_tokens, temperature, no_audio):
-        """Voxtral: apply_chat_template 一次性处理 audio+text, 返回 inputs tensor."""
+    @staticmethod
+    def _conversation(audio_path, prompt=None, history=None, no_audio=False):
+        """Convert evaluation history to the official Voxtral chat schema."""
+        conv = []
+        source = history or [{"from": "human", "value": prompt}]
+        for i, turn in enumerate(source):
+            role = "user" if turn["from"] == "human" else "assistant"
+            if role == "assistant":
+                content = turn["value"]
+            else:
+                content = [{"type": "text", "text": turn["value"]}]
+                if i == 0 and not no_audio:
+                    content.insert(0, {"type": "audio", "path": audio_path})
+            conv.append({"role": role, "content": content})
+        return conv
+
+    def _batch(self, audio_paths, prompts=None, histories=None,
+               max_new_tokens=None, temperature=None, no_audio=False):
+        """Run a real tensor batch through apply_chat_template and generate."""
         import torch
 
-        # 构建 conversation (Voxtral 用 "path" 而非 "audio_url")
-        if conversations is not None:
-            conv = []
-            for i, turn in enumerate(conversations):
-                role = "user" if turn["from"] == "human" else "assistant"
-                if i == 0 and role == "user":
-                    content = [{"type": "text", "text": turn["value"]}]
-                    if not no_audio:
-                        content.insert(0, {"type": "audio", "path": audio_path})
-                    conv.append({"role": "user", "content": content})
-                elif role == "user":
-                    conv.append({"role": "user", "content": [{"type": "text", "text": turn["value"]}]})
-                else:
-                    conv.append({"role": "assistant", "content": turn["value"]})
-        else:
-            content = [{"type": "text", "text": prompt}]
-            if not no_audio:
-                content.insert(0, {"type": "audio", "path": audio_path})
-            conv = [{"role": "user", "content": content}]
+        conversations = [self._conversation(
+            audio_path,
+            prompt=None if prompts is None else prompts[i],
+            history=None if histories is None else histories[i],
+            no_audio=no_audio,
+        ) for i, audio_path in enumerate(audio_paths)]
+        inputs = self.processor.apply_chat_template(conversations)
+        inputs = inputs.to(self.device, dtype=self.torch_dtype)
+        temp = self.default_temperature if temperature is None else temperature
 
-        # apply_chat_template 直接返回 inputs tensor (不需要 tokenize=False)
-        inputs = self.processor.apply_chat_template(conv)
-        inputs = inputs.to(self.device, dtype=torch.bfloat16)
-
-        with torch.no_grad():
+        with torch.inference_mode():
             output_ids = self.model.generate(
                 **inputs,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature if temperature > 0 else None,
-                do_sample=temperature > 0,
+                max_new_tokens=max_new_tokens or self.max_new_tokens,
+                temperature=temp if temp > 0 else None,
+                do_sample=temp > 0,
             )
 
-        return self.processor.batch_decode(
+        return [text.strip() for text in self.processor.batch_decode(
             output_ids[:, inputs["input_ids"].shape[1]:],
             skip_special_tokens=True,
-        )[0].strip()
+        )]
+
+    def generate_batch(self, audio_paths, prompts, max_new_tokens=None,
+                       temperature=None, no_audio=False):
+        return self._batch(
+            audio_paths, prompts=prompts, max_new_tokens=max_new_tokens,
+            temperature=temperature, no_audio=no_audio)
+
+    def chat_batch(self, audio_paths, conversations, max_new_tokens=None,
+                   temperature=None, no_audio=False):
+        return self._batch(
+            audio_paths, histories=conversations, max_new_tokens=max_new_tokens,
+            temperature=temperature, no_audio=no_audio)
+
+    def _infer(self, audio_path, prompt, conversations,
+               max_new_tokens, temperature, no_audio):
+        return self._batch(
+            [audio_path],
+            None if conversations is not None else [prompt],
+            [conversations] if conversations is not None else None,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            no_audio=no_audio,
+        )[0]
+
+
+# Backward-compatible import name used by older local scripts.
+VoxtralMiniBackend = VoxtralBackend
 
 
 # ============================================================
-# Audio-Flamingo-Next (7B, NVIDIA)
-# https://huggingface.co/nvidia/Audio-Flamingo-Next-Instruct
+# Qwen2.5-Omni-7B
+# https://huggingface.co/Qwen/Qwen2.5-Omni-7B
 # ============================================================
-class AudioFlamingoNextBackend(_BaseAudioBackend):
-    """Audio-Flamingo-Next by NVIDIA. Best open non-speech audio model."""
+class Qwen25OmniBackend(_BaseAudioBackend):
+    """Official Qwen2.5-Omni Transformers backend with native batching."""
 
     def _load_model(self):
-        from transformers import AutoModelForCausalLM
-        return AutoModelForCausalLM.from_pretrained(
-            self.model_id, torch_dtype=self.torch_dtype,
-            device_map=self.device if self.device.startswith("cuda") else self.device,
-            low_cpu_mem_usage=True, trust_remote_code=True,
+        from transformers import Qwen2_5OmniThinkerForConditionalGeneration
+        kwargs = dict(torch_dtype=self.torch_dtype, device_map=self.device,
+                      low_cpu_mem_usage=True)
+        if self.attn_implementation:
+            kwargs["attn_implementation"] = self.attn_implementation
+        return Qwen2_5OmniThinkerForConditionalGeneration.from_pretrained(
+            self.model_id, **kwargs).eval()
+
+    def _load_processor(self):
+        from transformers import Qwen2_5OmniProcessor
+        processor = Qwen2_5OmniProcessor.from_pretrained(self.model_id)
+        # Batched decoder-only generation must left-pad prompts of different
+        # lengths so generation always starts after the final real token.
+        processor.tokenizer.padding_side = "left"
+        return processor
+
+    @staticmethod
+    def _conversation(audio_path, prompt=None, history=None, no_audio=False):
+        conv = []
+        source = history or [{"from": "human", "value": prompt}]
+        for i, turn in enumerate(source):
+            role = "user" if turn["from"] == "human" else "assistant"
+            content = [{"type": "text", "text": turn["value"]}]
+            if i == 0 and role == "user" and not no_audio:
+                content.insert(0, {"type": "audio", "audio": audio_path})
+            conv.append({"role": role, "content": content})
+        return conv
+
+    def _batch(self, audio_paths, prompts=None, histories=None,
+               max_new_tokens=None, temperature=None, no_audio=False):
+        import torch
+        from qwen_omni_utils import process_mm_info
+        conversations = [self._conversation(a,
+                         prompt=None if prompts is None else prompts[i],
+                         history=None if histories is None else histories[i],
+                         no_audio=no_audio) for i, a in enumerate(audio_paths)]
+        texts = self.processor.apply_chat_template(
+            conversations, add_generation_prompt=True, tokenize=False)
+        audios, images, videos = process_mm_info(conversations, use_audio_in_video=False)
+        inputs = self.processor(text=texts, audio=audios, images=images, videos=videos,
+                                padding=True, return_tensors="pt",
+                                use_audio_in_video=False)
+        inputs = inputs.to(self.model.device).to(self.model.dtype)
+        temp = self.default_temperature if temperature is None else temperature
+        with torch.inference_mode():
+            ids = self.model.generate(
+                **inputs, use_audio_in_video=False,
+                max_new_tokens=max_new_tokens or self.max_new_tokens,
+                do_sample=temp > 0,
+                temperature=temp if temp > 0 else None,
+            )
+        completion = ids[:, inputs["input_ids"].shape[1]:]
+        return [x.strip() for x in self.processor.batch_decode(
+            completion, skip_special_tokens=True,
+            clean_up_tokenization_spaces=False)]
+
+    def generate_batch(self, audio_paths, prompts, max_new_tokens=None,
+                       temperature=None, no_audio=False):
+        return self._batch(audio_paths, prompts=prompts, max_new_tokens=max_new_tokens,
+                           temperature=temperature, no_audio=no_audio)
+
+    def chat_batch(self, audio_paths, conversations, max_new_tokens=None,
+                   temperature=None, no_audio=False):
+        return self._batch(audio_paths, histories=conversations,
+                           max_new_tokens=max_new_tokens, temperature=temperature,
+                           no_audio=no_audio)
+
+    def _infer(self, audio_path, prompt, conversations, max_new_tokens,
+               temperature, no_audio):
+        return self._batch([audio_path], None if conversations else [prompt],
+                           [conversations] if conversations else None,
+                           max_new_tokens, temperature, no_audio)[0]
+
+
+# ============================================================
+# MiniCPM-o 2.6
+# https://github.com/IsiSinclair/MiniCPM-o-2.6
+# ============================================================
+class MiniCPMoBackend(_BaseAudioBackend):
+    """Official MiniCPM-o ``model.chat`` audio-to-text backend.
+
+    The released chat API is single-example; inherited batch methods deliberately
+    loop instead of pretending to provide tensor batching.
+    """
+
+    def _load_model(self):
+        import transformers
+        if transformers.__version__ != "4.44.2":
+            raise RuntimeError(
+                "MiniCPM-o 2.6 requires transformers==4.44.2 (official pin); "
+                "install the official MiniCPM-o dependencies before using this backend"
+            )
+        from transformers import AutoModel
+        kwargs = dict(trust_remote_code=True, torch_dtype=self.torch_dtype,
+                      low_cpu_mem_usage=True)
+        if self.attn_implementation:
+            kwargs["attn_implementation"] = self.attn_implementation
+        model = AutoModel.from_pretrained(self.model_id, **kwargs).eval()
+        if self.device == "auto":
+            # Remote-code chat does not reliably support Accelerate device maps.
+            self.device = "cuda:0"
+        return model.to(self.device)
+
+    def _load_processor(self):
+        from transformers import AutoTokenizer
+        return AutoTokenizer.from_pretrained(self.model_id, trust_remote_code=True)
+
+    def _infer(self, audio_path, prompt, conversations, max_new_tokens,
+               temperature, no_audio):
+        import librosa
+        history = conversations or [{"from": "human", "value": prompt}]
+        msgs = []
+        for i, turn in enumerate(history):
+            role = "user" if turn["from"] == "human" else "assistant"
+            content = [turn["value"]]
+            if i == 0 and role == "user" and not no_audio:
+                audio, _ = librosa.load(audio_path, sr=16000, mono=True)
+                content.append(audio)
+            msgs.append({"role": role, "content": content})
+        temp = self.default_temperature if temperature is None else temperature
+        answer = self.model.chat(
+            msgs=msgs, tokenizer=self.processor,
+            sampling=temp > 0, temperature=temp if temp > 0 else 0.1,
+            max_new_tokens=max_new_tokens,
+            use_tts_template=False, generate_audio=False,
         )
+        if isinstance(answer, dict):
+            answer = answer.get("text", "")
+        return str(answer or "").strip()
+
+
+# ============================================================
+# Audio-Flamingo-Next (8B, NVIDIA)
+# https://huggingface.co/nvidia/audio-flamingo-next-hf
+# ============================================================
+class AudioFlamingoNextBackend(_BaseAudioBackend):
+    """Current official AF-Next HF backend with conversation batching."""
+
+    def _load_model(self):
+        from transformers import AutoModel
+
+        kwargs = dict(dtype=self.torch_dtype, device_map=self.device,
+                      low_cpu_mem_usage=True)
+        if self.attn_implementation:
+            kwargs["attn_implementation"] = self.attn_implementation
+        return AutoModel.from_pretrained(
+            self.model_id, **kwargs
+        ).eval()
 
     def _load_processor(self):
         from transformers import AutoProcessor
-        return AutoProcessor.from_pretrained(self.model_id, trust_remote_code=True)
+        return AutoProcessor.from_pretrained(self.model_id)
 
-    def _call_processor(self, text: str, audio_array):
-        """AF-Next: try audios first, fall back to audio."""
+    @staticmethod
+    def _conversation(audio_path, prompt=None, history=None, no_audio=False):
+        conv = []
+        source = history or [{"from": "human", "value": prompt}]
+        for i, turn in enumerate(source):
+            role = "user" if turn["from"] == "human" else "assistant"
+            content = [{"type": "text", "text": turn["value"]}]
+            if i == 0 and role == "user" and not no_audio:
+                content.append({"type": "audio", "path": audio_path})
+            conv.append({"role": role, "content": content})
+        return conv
+
+    def _batch(self, audio_paths, prompts=None, histories=None,
+               max_new_tokens=None, temperature=None, no_audio=False):
+        import torch
+        conversations = [self._conversation(
+            a, None if prompts is None else prompts[i],
+            None if histories is None else histories[i], no_audio)
+            for i, a in enumerate(audio_paths)]
+        batch = self.processor.apply_chat_template(
+            conversations, tokenize=True, add_generation_prompt=True,
+            return_dict=True,
+        ).to(self.model.device, dtype=self.model.dtype)
+        temp = self.default_temperature if temperature is None else temperature
+        with torch.inference_mode():
+            generated = self.model.generate(
+                **batch, max_new_tokens=max_new_tokens or self.max_new_tokens,
+                do_sample=temp > 0, temperature=temp if temp > 0 else None,
+                repetition_penalty=1.2)
+        completion = generated[:, batch["input_ids"].shape[1]:]
+        return [x.strip() for x in self.processor.batch_decode(
+            completion, skip_special_tokens=True,
+            clean_up_tokenization_spaces=False)]
+
+    def generate_batch(self, audio_paths, prompts, max_new_tokens=None,
+                       temperature=None, no_audio=False):
+        return self._batch(audio_paths, prompts=prompts, max_new_tokens=max_new_tokens,
+                           temperature=temperature, no_audio=no_audio)
+
+    def chat_batch(self, audio_paths, conversations, max_new_tokens=None,
+                   temperature=None, no_audio=False):
+        return self._batch(audio_paths, histories=conversations,
+                           max_new_tokens=max_new_tokens, temperature=temperature,
+                           no_audio=no_audio)
+
+    def _infer(self, audio_path, prompt, conversations, max_new_tokens,
+               temperature, no_audio):
+        return self._batch([audio_path], None if conversations else [prompt],
+                           [conversations] if conversations else None,
+                           max_new_tokens, temperature, no_audio)[0]
+
+
+# ============================================================
+# Gemma 4 E2B IT (Google)
+# https://huggingface.co/google/gemma-4-E2B-it
+# ============================================================
+class Gemma4Backend(_BaseAudioBackend):
+    """Official Gemma 4 audio backend with native conversation batching."""
+
+    def _load_model(self):
+        from transformers import AutoModelForMultimodalLM
+
+        kwargs = dict(dtype=self.torch_dtype, device_map=self.device,
+                      low_cpu_mem_usage=True)
+        if self.attn_implementation:
+            kwargs["attn_implementation"] = self.attn_implementation
+        return AutoModelForMultimodalLM.from_pretrained(
+            self.model_id, **kwargs
+        ).eval()
+
+    def _load_processor(self):
+        from transformers import AutoProcessor
+        return AutoProcessor.from_pretrained(
+            self.model_id, padding_side="left"
+        )
+
+    @staticmethod
+    def _conversation(audio_path, prompt=None, history=None, no_audio=False):
+        conv = []
+        source = history or [{"from": "human", "value": prompt}]
+        for i, turn in enumerate(source):
+            role = "user" if turn["from"] == "human" else "assistant"
+            if role == "assistant":
+                content = turn["value"]
+            else:
+                content = [{"type": "text", "text": turn["value"]}]
+                # Gemma 4 recommends placing audio after the accompanying text.
+                if i == 0 and not no_audio:
+                    content.append({"type": "audio", "audio": audio_path})
+            conv.append({"role": role, "content": content})
+        return conv
+
+    def _batch(self, audio_paths, prompts=None, histories=None,
+               max_new_tokens=None, temperature=None, no_audio=False):
+        import torch
+
+        conversations = [self._conversation(
+            audio_path,
+            None if prompts is None else prompts[i],
+            None if histories is None else histories[i],
+            no_audio,
+        ) for i, audio_path in enumerate(audio_paths)]
+        batch = self.processor.apply_chat_template(
+            conversations,
+            tokenize=True,
+            add_generation_prompt=True,
+            enable_thinking=False,
+            return_dict=True,
+            return_tensors="pt",
+        ).to(self.model.device, dtype=self.model.dtype)
+
+        temp = self.default_temperature if temperature is None else temperature
+        generation_kwargs = {
+            "max_new_tokens": max_new_tokens or self.max_new_tokens,
+            "do_sample": temp > 0,
+        }
+        if temp > 0:
+            generation_kwargs["temperature"] = temp
+
+        with torch.inference_mode():
+            generated = self.model.generate(**batch, **generation_kwargs)
+        completion = generated[:, batch["input_ids"].shape[1]:]
+        return [text.strip() for text in self.processor.batch_decode(
+            completion,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )]
+
+    def generate_batch(self, audio_paths, prompts, max_new_tokens=None,
+                       temperature=None, no_audio=False):
+        return self._batch(
+            audio_paths, prompts=prompts, max_new_tokens=max_new_tokens,
+            temperature=temperature, no_audio=no_audio,
+        )
+
+    def chat_batch(self, audio_paths, conversations, max_new_tokens=None,
+                   temperature=None, no_audio=False):
+        return self._batch(
+            audio_paths, histories=conversations,
+            max_new_tokens=max_new_tokens, temperature=temperature,
+            no_audio=no_audio,
+        )
+
+    def _infer(self, audio_path, prompt, conversations, max_new_tokens,
+               temperature, no_audio):
+        return self._batch(
+            [audio_path],
+            None if conversations else [prompt],
+            [conversations] if conversations else None,
+            max_new_tokens,
+            temperature,
+            no_audio,
+        )[0]
+
+
+# ============================================================
+# MiDashengLM-7B-1021-BF16 (Xiaomi)
+# https://huggingface.co/mispeech/midashenglm-7b-1021-bf16
+# ============================================================
+class MiDashengLMBackend(_BaseAudioBackend):
+    """MiDashengLM backend with native batched audio conversations."""
+
+    # The checkpoint expands one <|AUDIO|> placeholder per projected Dasheng
+    # frame. With the model's 160-sample hop, 4x encoder subsampling and 5x
+    # projector subsampling, inputs shorter than 3040 samples produce zero
+    # placeholders. Use a round 0.20 s floor at 16 kHz so short pulse clips
+    # still produce one audio span. Padding is applied in memory only.
+    _MIN_AUDIO_SECONDS = 0.20
+
+    def _load_model(self):
+        import torch
+        import torchaudio.functional as audio_functional
+        from transformers import AutoModelForCausalLM
+
+        kwargs = dict(
+            dtype=self.torch_dtype,
+            device_map=self.device,
+            low_cpu_mem_usage=True,
+            trust_remote_code=True,
+        )
+        if self.attn_implementation:
+            kwargs["attn_implementation"] = self.attn_implementation
+
+        # Transformers 5 initializes custom models on the meta device. The
+        # Dasheng frontend creates two non-persistent signal-processing buffers
+        # during __init__, while torchaudio creates part of its mel filter bank
+        # explicitly on CPU. That CPU/meta mixture raises before weights load.
+        # Force just these two buffers onto CPU during construction, then move
+        # them with the fully loaded model to the requested CUDA device.
+        original_hann_window = torch.hann_window
+        original_melscale_fbanks = audio_functional.melscale_fbanks
+
+        def cpu_hann_window(*args, **kwargs):
+            kwargs["device"] = "cpu"
+            with torch.device("cpu"):
+                return original_hann_window(*args, **kwargs)
+
+        def cpu_melscale_fbanks(*args, **kwargs):
+            with torch.device("cpu"):
+                return original_melscale_fbanks(*args, **kwargs)
+
+        torch.hann_window = cpu_hann_window
+        audio_functional.melscale_fbanks = cpu_melscale_fbanks
         try:
-            return self.processor(
-                text=text, audios=[audio_array],
-                return_tensors="pt", sampling_rate=self.sampling_rate,
+            model = AutoModelForCausalLM.from_pretrained(
+                self.model_id, **kwargs
             )
-        except TypeError:
-            return self.processor(
-                text=text, audio=audio_array,
-                return_tensors="pt", sampling_rate=self.sampling_rate,
+        finally:
+            torch.hann_window = original_hann_window
+            audio_functional.melscale_fbanks = original_melscale_fbanks
+
+        return model.to(self.device).eval()
+
+    def _load_processor(self):
+        import transformers
+        from transformers import AutoProcessor
+
+        # The checkpoint's processor was authored for Transformers 4.x and
+        # imports these classes from the package root. Transformers 5 keeps the
+        # implementations but no longer exports the legacy names there.
+        if not hasattr(transformers, "Qwen2Tokenizer"):
+            from transformers.models.qwen2.tokenization_qwen2 import Qwen2Tokenizer
+            transformers.Qwen2Tokenizer = Qwen2Tokenizer
+        if not hasattr(transformers, "Qwen2TokenizerFast"):
+            transformers.Qwen2TokenizerFast = transformers.Qwen2Tokenizer
+        if not hasattr(transformers, "Wav2Vec2FeatureExtractor"):
+            from transformers.models.wav2vec2.feature_extraction_wav2vec2 import (
+                Wav2Vec2FeatureExtractor,
             )
+            transformers.Wav2Vec2FeatureExtractor = Wav2Vec2FeatureExtractor
+
+        return AutoProcessor.from_pretrained(
+            self.model_id,
+            trust_remote_code=True,
+        )
+
+    def _prepare_audio(self, audio_path):
+        import librosa
+        import numpy as np
+
+        sampling_rate = int(self.processor.sampling_rate)
+        audio, _ = librosa.load(
+            audio_path,
+            sr=sampling_rate,
+            mono=True,
+            dtype=np.float32,
+        )
+        minimum_samples = int(round(self._MIN_AUDIO_SECONDS * sampling_rate))
+        if audio.shape[0] < minimum_samples:
+            audio = np.pad(audio, (0, minimum_samples - audio.shape[0]))
+        return audio
+
+    @staticmethod
+    def _conversation(audio, prompt=None, history=None, no_audio=False):
+        conv = []
+        source = history or [{"from": "human", "value": prompt}]
+        for i, turn in enumerate(source):
+            role = "user" if turn["from"] == "human" else "assistant"
+            if role == "assistant":
+                content = turn["value"]
+            else:
+                content = [{"type": "text", "text": turn["value"]}]
+                if i == 0 and not no_audio:
+                    # Match the official template: accompanying text, then audio.
+                    content.append({"type": "audio", "audio": audio})
+            conv.append({"role": role, "content": content})
+        return conv
+
+    def _batch(self, audio_paths, prompts=None, histories=None,
+               max_new_tokens=None, temperature=None, no_audio=False):
+        import torch
+
+        audios = (audio_paths if no_audio else
+                  [self._prepare_audio(path) for path in audio_paths])
+        conversations = [self._conversation(
+            audio,
+            None if prompts is None else prompts[i],
+            None if histories is None else histories[i],
+            no_audio,
+        ) for i, audio in enumerate(audios)]
+
+        batch = self.processor.apply_chat_template(
+            conversations,
+            tokenize=True,
+            add_generation_prompt=True,
+            add_special_tokens=True,
+            return_dict=True,
+            return_tensors="pt",
+        ).to(self.model.device, dtype=self.model.dtype)
+
+        temp = self.default_temperature if temperature is None else temperature
+        generation_kwargs = {
+            "max_new_tokens": max_new_tokens or self.max_new_tokens,
+            "do_sample": temp > 0,
+        }
+        if temp > 0:
+            generation_kwargs["temperature"] = temp
+
+        with torch.inference_mode():
+            generated = self.model.generate(**batch, **generation_kwargs)
+
+        # MiDashengLM internally calls decoder.generate(inputs_embeds=...).
+        # Its return contains generated token IDs only, unlike the usual
+        # decoder-only output that prepends input_ids. Do not slice by prompt
+        # length here or the beginning of every answer will be discarded.
+        return [text.strip() for text in self.processor.tokenizer.batch_decode(
+            generated,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )]
+
+    def generate_batch(self, audio_paths, prompts, max_new_tokens=None,
+                       temperature=None, no_audio=False):
+        return self._batch(
+            audio_paths,
+            prompts=prompts,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            no_audio=no_audio,
+        )
+
+    def chat_batch(self, audio_paths, conversations, max_new_tokens=None,
+                   temperature=None, no_audio=False):
+        return self._batch(
+            audio_paths,
+            histories=conversations,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            no_audio=no_audio,
+        )
+
+    def _infer(self, audio_path, prompt, conversations, max_new_tokens,
+               temperature, no_audio):
+        return self._batch(
+            [audio_path],
+            None if conversations else [prompt],
+            [conversations] if conversations else None,
+            max_new_tokens,
+            temperature,
+            no_audio,
+        )[0]
 
 
 # ============================================================
@@ -421,6 +953,16 @@ class MockModel:
         return self.generate(audio_path, last_msg, max_new_tokens,
                              temperature, no_audio=no_audio)
 
+    def generate_batch(self, audio_paths, prompts, max_new_tokens=512,
+                       temperature=0.1, no_audio=False):
+        return [self.generate(a, p, max_new_tokens, temperature, no_audio)
+                for a, p in zip(audio_paths, prompts)]
+
+    def chat_batch(self, audio_paths, conversations, max_new_tokens=512,
+                   temperature=0.1, no_audio=False):
+        return [self.chat(a, c, max_new_tokens, temperature, no_audio)
+                for a, c in zip(audio_paths, conversations)]
+
     def _extract_options(self, prompt: str) -> dict:
         import re
         option_map = {}
@@ -512,7 +1054,12 @@ ModelInference.BACKENDS = {
     "mock":             MockModel,
     "qwen2_audio":      Qwen2AudioBackend,
     "aero1_audio":      Aero1AudioBackend,
-    "voxtral_mini":     VoxtralMiniBackend,
+    "voxtral_mini":     VoxtralBackend,
+    "voxtral_small":    VoxtralBackend,
     "af_next":          AudioFlamingoNextBackend,
     "kimi_audio":       KimiAudioBackend,
+    "qwen25_omni":      Qwen25OmniBackend,
+    "minicpmo":         MiniCPMoBackend,
+    "gemma4":           Gemma4Backend,
+    "midashenglm":      MiDashengLMBackend,
 }

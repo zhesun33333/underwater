@@ -37,6 +37,8 @@ class DataLoader:
         jsonl_path: str,
         audio_root: str,
         limit: int = None,
+        shard_index: int = 0,
+        num_shards: int = 1,
     ) -> List[EvalSample]:
         """加载评估样本。"""
         samples = []
@@ -44,11 +46,13 @@ class DataLoader:
 
         with open(jsonl_path, "r", encoding="utf-8") as f:
             for i, line in enumerate(f):
-                if limit and i >= limit:
-                    break
                 line = line.strip()
                 if not line:
                     continue
+                if i % num_shards != shard_index:
+                    continue
+                if limit and len(samples) >= limit:
+                    break
                 try:
                     item = json.loads(line)
                     sample = self._build_sample(item, audio_base)

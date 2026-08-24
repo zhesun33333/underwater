@@ -147,19 +147,26 @@ prompts:
 # ============================================================
 model:
   # --- Active backend (modify here to switch models) ---
-  backend: "qwen2_audio"                    # mock | qwen2_audio | aero1_audio | voxtral_mini | af_next | kimi_audio
-  model_id: "/root/autodl-tmp/models/models/Qwen2-Audio-7B-Instruct/snapshots/master"
+  backend: "qwen25_omni"                    # current reproduction target
+  model_id: "/root/autodl-tmp/models/Qwen2.5-Omni-7B"
   device: "cuda:0"                          # or "auto" for multi-GPU
   torch_dtype: "bfloat16"                   # bfloat16 | float16 | float32
   max_new_tokens: 256
   temperature: 0.0                          # 0.0 = greedy decoding
+  batch_size: 1                             # voxtral / qwen25_omni / af_next / gemma4 / midashenglm support true batching
+  attn_implementation: "sdpa"              # sdpa | flash_attention_2
 
   # --- Default model_id per backend (HuggingFace) ---
   # qwen2_audio:   "Qwen/Qwen2-Audio-7B-Instruct"
   # aero1_audio:   "lmms-lab/Aero-1-Audio"
   # voxtral_mini:  "mistralai/Voxtral-Mini-3B-2507"
-  # af_next:       "nvidia/Audio-Flamingo-Next-Instruct"
+  # voxtral_small: "mistralai/Voxtral-Small-24B-2507"
+  # af_next:       "nvidia/audio-flamingo-next-hf"
   # kimi_audio:    "moonshotai/Kimi-Audio-7B-Instruct"
+  # qwen25_omni:   "Qwen/Qwen2.5-Omni-7B"
+  # minicpmo:      "openbmb/MiniCPM-o-2_6"
+  # gemma4:        "google/gemma-4-E2B-it"
+  # midashenglm:   "mispeech/midashenglm-7b-1021-bf16"
 
   mock:
     accuracy: 0.85

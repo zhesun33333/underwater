@@ -59,7 +59,7 @@ DISPLAY = {
     "CW": "CW", "LFM": "LFM", "HFM": "HFM", "2FSK": "2FSK",
     "4FSK": "4FSK", "BPSK": "BPSK", "QPSK": "QPSK", "OFDM": "OFDM",
     "cargo": "Cargo", "cruise": "Cruise", "fishing": "Fishing",
-    "warship": "Warship", "underwater_target": "Underwater vehicle",
+    "warship": "Warship", "underwater_target": "Underwater Target",
 }
 GROUPS = {
     "Pulse": ORDER[:3],
@@ -338,7 +338,7 @@ def draw_hierarchy(ax, counts: Counter) -> None:
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.text(.01, .88, "(a) Evaluation hierarchy and support", fontsize=10, weight="bold")
-    ax.text(.01, .56, f"{sum(counts.values()):,} favorable-condition\nheld-out examples",
+    ax.text(.01, .56, f"{sum(counts.values()):,} quality-selected\nheld-out examples",
             ha="left", va="center", fontsize=8.5)
     positions = {"Pulse": .36, "Communication": .61, "Ship noise": .86}
     for group, x in positions.items():

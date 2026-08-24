@@ -45,6 +45,7 @@ class MultiTurnEvaluator:
         self.parser = OutputParser(config)
         self.scorer = Scorer(config)
         self.prompts = config["prompts"]["three_turn"]
+        self.batch_size = max(1, int(config.get("model", {}).get("batch_size", 1)))
 
     def evaluate(
         self, samples: List[EvalSample]
@@ -55,67 +56,69 @@ class MultiTurnEvaluator:
 
         cascade_count = 0
 
-        for sample in samples:
-            # Turn 1: L1 判别
-            q1 = rng.choice(self.prompts["turn1"])
-            a1 = self.inference.generate(sample.audio_path, q1)
-            pred1 = self.parser.parse_turn1(sample.sample_id, a1, prompt=q1)
-            t1_correct = (pred1.L1 == sample.gt["L1"])
+        for start in range(0, len(samples), self.batch_size):
+            chunk = samples[start:start + self.batch_size]
+            q1s = [rng.choice(self.prompts["turn1"]) for _ in chunk]
+            a1s = self.inference.generate_batch(
+                [s.audio_path for s in chunk], q1s)
+            states = []
+            eligible = []
+            for i, (sample, q1, a1) in enumerate(zip(chunk, q1s, a1s)):
+                pred1 = self.parser.parse_turn1(sample.sample_id, a1, prompt=q1)
+                ok = pred1.L1 == sample.gt["L1"]
+                state = dict(sample=sample, q1=q1, a1=a1, pred1=pred1,
+                             t1_correct=ok)
+                states.append(state)
+                if ok:
+                    templates = (self.prompts["turn2_active"] if pred1.L1 == "active"
+                                 else self.prompts["turn2_passive"])
+                    q2 = rng.choice(templates).replace(
+                        "{L1}", self._l1_display_name(pred1.L1))
+                    history2 = [
+                        {"from": "human", "value": q1},
+                        {"from": "gpt", "value": a1},
+                        {"from": "human", "value": q2},
+                    ]
+                    state.update(q2=q2, history2=history2)
+                    eligible.append(state)
 
-            if t1_correct:
-                l1_detected = pred1.L1
-                if l1_detected == "active":
-                    t2_templates = self.prompts["turn2_active"]
-                else:
-                    t2_templates = self.prompts["turn2_passive"]
+            if eligible:
+                a2s = self.inference.chat_batch(
+                    [x["sample"].audio_path for x in eligible],
+                    [x["history2"] for x in eligible])
+                histories3 = []
+                for state, a2 in zip(eligible, a2s):
+                    pred2 = self.parser.parse(
+                        state["sample"].sample_id, a2, prompt=state["q2"])
+                    state.update(a2=a2, pred2=pred2,
+                                 t2_correct=(pred2.L2 == state["sample"].gt["L2"]
+                                             and pred2.L3 == state["sample"].gt["L3"]))
+                    histories3.append(state["history2"] + [
+                        {"from": "gpt", "value": a2},
+                        {"from": "human", "value": self.prompts["turn3"]},
+                    ])
+                a3s = self.inference.chat_batch(
+                    [x["sample"].audio_path for x in eligible], histories3)
+                for state, a3 in zip(eligible, a3s):
+                    state["a3"] = a3
 
-                q2 = rng.choice(t2_templates).replace(
-                    "{L1}", self._l1_display_name(l1_detected))
-
-                # Turn 2: L2+L3 分类
-                history_t2 = [
-                    {"from": "human", "value": q1},
-                    {"from": "gpt", "value": a1},
-                    {"from": "human", "value": q2},
-                ]
-                a2 = self.inference.chat(sample.audio_path, history_t2)
-                pred2 = self.parser.parse(sample.sample_id, a2, prompt=q2)
-                t2_correct = (
-                    pred2.L2 == sample.gt["L2"] and pred2.L3 == sample.gt["L3"]
-                )
-                skipped = False
-
-                # Turn 3: 判断依据
-                q3 = self.prompts["turn3"]
-                history_t3 = history_t2 + [
-                    {"from": "gpt", "value": a2},
-                    {"from": "human", "value": q3},
-                ]
-                a3 = self.inference.chat(sample.audio_path, history_t3)
-            else:
-                # T1 错 → 级联终止
-                q2 = ""
-                a2 = ""
-                pred2 = HierPrediction(
-                    sample_id=sample.sample_id,
-                    L1="unknown", L2="cascade_error", L3="cascade_error",
-                    parse_tier=0, raw_output="[cascade: T1 L1 incorrect]",
-                )
-                t2_correct = False
-                skipped = True
-                q3 = ""
-                a3 = ""
-                cascade_count += 1
-
-            results.append(TurnResult(
-                sample=sample,
-                turn1_prompt=q1, turn1_output=a1, turn1_pred=pred1,
-                turn1_correct=t1_correct,
-                turn2_prompt=q2, turn2_output=a2, turn2_pred=pred2,
-                turn2_correct=t2_correct,
-                turn3_prompt=q3, turn3_output=a3,
-                cascade_skipped=skipped,
-            ))
+            for state in states:
+                if not state["t1_correct"]:
+                    state.update(q2="", a2="", a3="", t2_correct=False,
+                        pred2=HierPrediction(
+                            sample_id=state["sample"].sample_id, L1="unknown",
+                            L2="cascade_error", L3="cascade_error", parse_tier=0,
+                            raw_output="[cascade: T1 L1 incorrect]"))
+                    cascade_count += 1
+                results.append(TurnResult(
+                    sample=state["sample"], turn1_prompt=state["q1"],
+                    turn1_output=state["a1"], turn1_pred=state["pred1"],
+                    turn1_correct=state["t1_correct"], turn2_prompt=state["q2"],
+                    turn2_output=state["a2"], turn2_pred=state["pred2"],
+                    turn2_correct=state["t2_correct"],
+                    turn3_prompt=self.prompts["turn3"] if state["t1_correct"] else "",
+                    turn3_output=state["a3"],
+                    cascade_skipped=not state["t1_correct"]))
 
         n = len(results)
         gts = [r.sample.gt for r in results]
