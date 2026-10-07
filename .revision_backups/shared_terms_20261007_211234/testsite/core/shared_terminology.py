@@ -79,8 +79,8 @@ L3_PRECISE = {
 
 # ============================================================
 # L3 SHOULD — for scorer reasoning-quality evaluation
-# Superset of L3_PRECISE: curated English variants and compatible shared cues.
-# This finite vocabulary is not an exhaustive semantic description of a class.
+# Superset of L3_PRECISE: includes all valid English variants a model
+# might reasonably output for each class
 # ============================================================
 L3_SHOULD = {
     # ── Detection pulse ──
@@ -138,24 +138,6 @@ for _ship_key, _label_term in {
     "underwater_target": "underwater vehicle",
 }.items():
     L3_SHOULD[_ship_key] = set(_SHIP_OBSERVABLE_TERMS) | {_label_term}
-
-
-# Non-exclusive observations are shared explicitly. Membership means that the
-# phrase is compatible with the class, not that every sample exhibits it or
-# that it distinguishes the leaf. Keep state counts and modulation laws specific.
-_SHARED_CUE_GROUPS = (
-    (("LFM", "HFM"), {"chirp"}),
-    (("BPSK", "QPSK"), {
-        "symbol-wise phase-state transitions", "phase reversal", "phase flip",
-        "phase inversion", "approximately 180-degree phase transitions",
-    }),
-    # Relative bandwidth / narrowband components alone do not specify a class.
-    # Apply to all leaves so these generic phrases cannot imply a CW conflict.
-    (tuple(L3_SHOULD), {"narrowband", "narrowband structure"}),
-)
-for _cue_classes, _cue_terms in _SHARED_CUE_GROUPS:
-    for _cue_class in _cue_classes:
-        L3_SHOULD[_cue_class].update(_cue_terms)
 
 
 def _number(value):
@@ -285,7 +267,7 @@ def build_l3_evidence(l3: str, meta: dict, rng) -> list[str]:
         ]
     return list(L3_PRECISE[l3])
 
-# Auto-derived after shared cues are added: global scoring vocabulary
+# Auto-derived: global set of all L3 distinguishing terms
 _ALL_L3_TERMS = set()
 for _s in L3_SHOULD.values():
     _ALL_L3_TERMS.update(_s)

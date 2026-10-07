@@ -25,32 +25,8 @@ python -m testsite.scripts.run_eval --data CONTROL_DIR/silent.jsonl --audio-root
 
 模型始终收到音频输入，静音条件不使用 `--ablation text_only`。两种条件保持相同模型、解码配置、固定问题、选项顺序、门控、解析与计分规则。按相同样本 ID 做后续配对分析，不把两个条件的预测混为一次实验汇总。各条件单独汇总时分别传入其自身清单。
 
-## 当前评估口径
+## 评估口径待讨论
 
 现有指标可分别计算原音频和静音条件，报告有符号的差值。静音的原标签仅作为配对参照，不代表静音具有该物理类别。
 
 `invalid_format` 表示回答未满足单字母协议，不能直接称为拒绝。第一轮未通过导致的 `cascade_error` 也不能称为第二轮拒绝。是否增加人工核验或明确拒绝识别，需另行确定，本次生成器未修改评测指标或增加拒绝分类。
-
-当前最小计划只要求原音频与静音的配对比较，主表报告两种条件的 L1/L2/L3 Accuracy、L3 Macro F1 及有符号差值。保留原三轮流程，不增加放弃选项或自动拒答检测。更完整的实验范围与结论边界见 [最小补充实验方案](../消融实验重新设计方案.md)。
-
-## 第三步：核验配对条件并导出差值
-
-完成上文的生成和两次正式评测后运行：
-
-```powershell
-python -m testsite.scripts.compare_silent_control --control-dir CONTROL_DIR --original-predictions RESULTS/original/predictions_shard_000.jsonl --silent-predictions RESULTS/silent/predictions_shard_000.jsonl --original-protocol RESULTS/original/protocol_shard_000.json --silent-protocol RESULTS/silent/protocol_shard_000.json --output-prefix RESULTS/comparison
-```
-
-多 GPU 运行时提供各条件合并后的完整预测清单，并在对应 `--original-protocol` / `--silent-protocol` 后列出该条件全部协议分片文件。不要混用两种条件的清单或协议。
-
-比较程序检查生成完成状态、两份条件清单和配对清单哈希、样本 ID 一一对应、音频未相对生成清单发生变化、注释与问题一致、模型生成设置一致、代码与术语版本一致。当前比较器要求生成记录包含 `pairs_sha256`，旧静音控制目录应使用新版生成器重新生成。
-
-输出到新的时间戳目录：
-
-- `comparison.json`：两条件全部现有指标、有符号差值、准确率百分点差值、执行和无效回答数量、输入文件哈希。
-- `comparison.md`：L1/L2/L3 Accuracy、L3 Macro F1、条件准确率的配对汇总表。
-- `paired_predictions.jsonl`：按 ID 对齐的两条件分类预测及 L3 正误。
-
-差值定义为原音频减静音，不假设一定为正。模型选择和解码设置必须一致；因第一轮门控变化，条件准确率与第三轮指标的实际分母可能不同。程序不会把无效格式标记为拒答。此流程不增加放弃选项、无音频实验或其他消融分支。
-
-这三个步骤构成当前最小静音实验的完整软件流程；Mock 检查验证代码衔接，不代表真实模型结果。真实模型推理仍需在目标 GPU 环境执行。

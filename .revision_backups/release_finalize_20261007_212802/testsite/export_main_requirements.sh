@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Export an environment snapshot without overwriting portable release requirements.
+# Always update requirements.txt next to this script, regardless of cwd.
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-output_file="${script_dir}/requirements.environment.$(date +%Y%m%d_%H%M%S).$$.txt"
-temp_file="$(mktemp "${script_dir}/requirements.environment.XXXXXX")"
+output_file="${script_dir}/requirements.txt"
+temp_file="$(mktemp "${script_dir}/requirements.txt.XXXXXX")"
 env_name="${1:-${CONDA_DEFAULT_ENV:-base}}"
 
 cleanup() {

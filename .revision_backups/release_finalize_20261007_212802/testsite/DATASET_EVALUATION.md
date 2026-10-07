@@ -44,7 +44,7 @@ python -m testsite.scripts.run_eval --data release/sft_test.jsonl --audio-root r
 独立汇总现在必须指定原始完整输入清单：
 
 ```powershell
-python -m testsite.scripts.merge_predictions --input predictions.jsonl --output metrics.json --manifest dataset/sft_test_highquality.jsonl --protocol RUN/protocol_shard_000.json
+python -m testsite.scripts.merge_predictions --input predictions.jsonl --output metrics.json --manifest dataset/sft_test_highquality.jsonl
 ```
 
 汇总会拒绝重复、缺失或额外 ID、混合运行签名、清单哈希不符、内嵌真值不符，以及问题或门控状态不一致的结果。部分样本测试不能冒充完整清单评测。旧结果缺少运行签名时会明确拒绝，不自动补造签名。
@@ -54,5 +54,3 @@ python -m testsite.scripts.merge_predictions --input predictions.jsonl --output 
 ## 单字母答案的大小写兼容
 
 问题和参考答案继续要求大写字母。Turn 1/2 接收器接受当前选项范围内的单个 ASCII 字母，忽略首尾空白并统一为大写后解码；例如 `a` 与 `A` 等价。原始回复仍原样保存。标点、解释、多选、全角字母和越界选项仍无效。此次调整不改变分类或第三轮指标的计算公式。
-
-汇总必须通过 `--protocol` 提供本次运行的全部协议分片文件（参数后可列多个文件）。校验每份协议的签名、清单、分片覆盖与当前评分实现哈希，并使用协议中保存的 taxonomy，不读取当前默认 taxonomy 代替。代码或术语版本不同将报错，须使用对应评测版本；不自动重解释旧预测。多 GPU 启动脚本已自动传入协议列表。

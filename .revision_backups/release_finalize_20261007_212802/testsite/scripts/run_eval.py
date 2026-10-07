@@ -29,7 +29,6 @@ if str(project_root) not in sys.path:
 from testsite.config import load_config
 from testsite.core.loader import DataLoader
 from testsite.core.integrity import file_sha256
-from testsite.core.protocol import implementation_hashes, identity_signature
 from testsite.core.inference import ModelInference
 from testsite.core.scorer import Scorer
 from testsite.eval.multi_turn import MultiTurnEvaluator
@@ -131,10 +130,14 @@ def main():
     manifest_sha256 = file_sha256(args.data) if args.data else "mock"
     identity = {"run_id": args.run_id, "manifest_sha256": manifest_sha256, "model": config["model"],
                 "taxonomy": config["taxonomy"],
-                "implementation": implementation_hashes()}
+                "implementation": {name: file_sha256(project_root / name) for name in (
+                    "testsite/core/parser.py", "testsite/core/scorer.py",
+                    "testsite/eval/multi_turn.py", "testsite/core/inference.py",
+                    "testsite/core/shared_terminology.py", "testsite/core/loader.py",
+                    "testsite/core/dataset_record.py")}}
     # Worker batch/device choices must not prevent compatible shard merging.
     identity["model"] = {k: v for k, v in identity["model"].items() if k not in ("device", "batch_size")}
-    run_signature = identity_signature(identity)
+    run_signature = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     inference = ModelInference(config)
 
     # ============================================================

@@ -20,7 +20,6 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from testsite.core.dataset_record import validate_gt
-from testsite.core.integrity import read_manifest
 
 PROCESSED_ROOT = Path("processed_audio")
 
@@ -166,50 +165,61 @@ def main():
     skipped_no_meta = 0
     skipped_low_quality = 0
 
-    records = read_manifest(jsonl_path)
-    for item in records:
-        sid, arel = item["id"], item["audio"]
-        total += 1
-
-        if "_gt" in item:
-            gt = validate_gt(item["_gt"], sid)
-            l3 = gt["L3"]
-            cat = "radiated_noise" if gt["L1"] == "passive" else gt["L2"]
-            meta_out = dict(item.get("_meta", {}))
-            field = "snr_db" if gt["L1"] == "passive" else "tl_db"
-            if meta_out.get(field) is None:
-                raise ValueError(f"{sid}: embedded metadata lacks {field} needed for selection")
-            quality = float(meta_out[field])
-            import math
-            if not math.isfinite(quality):
-                raise ValueError(f"{sid}: non-finite selection statistic")
-        else:
-            meta = find_meta(PROCESSED_ROOT, arel, sid)
-            if meta is None:
-                skipped_no_meta += 1
+    with open(jsonl_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
                 continue
             try:
-                cat, l3, quality, gt, meta_out = extract_quality_and_gt(meta)
-            except (ValueError, ZeroDivisionError, TypeError):
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            sid = item.get("id", "")
+            arel = item.get("audio", "")
+            if not sid or not arel:
+                continue
+            total += 1
+
+            if "_gt" in item:
+                gt = validate_gt(item["_gt"], sid)
+                l3 = gt["L3"]
+                cat = "radiated_noise" if gt["L1"] == "passive" else gt["L2"]
+                meta_out = dict(item.get("_meta", {}))
+                field = "snr_db" if gt["L1"] == "passive" else "tl_db"
+                if meta_out.get(field) is None:
+                    raise ValueError(f"{sid}: embedded metadata lacks {field} needed for selection")
+                quality = float(meta_out[field])
+                import math
+                if not math.isfinite(quality):
+                    raise ValueError(f"{sid}: non-finite selection statistic")
+            else:
+                meta = find_meta(PROCESSED_ROOT, arel, sid)
+                if meta is None:
+                    skipped_no_meta += 1
+                    continue
+                try:
+                    cat, l3, quality, gt, meta_out = extract_quality_and_gt(meta)
+                except (ValueError, ZeroDivisionError, TypeError):
+                    skipped_no_meta += 1
+                    continue
+            if l3 == "unknown" or gt.get("L1") == "unknown":
                 skipped_no_meta += 1
                 continue
-        if l3 == "unknown" or gt.get("L1") == "unknown":
-            skipped_no_meta += 1
-            continue
 
-        # 质量过滤
-        if (cat in ("pulse", "communication") and args.tl_min is not None
-                and quality < args.tl_min):
-            skipped_low_quality += 1
-            continue
-        if (cat == "radiated_noise" and args.snr_min is not None
-                and quality < args.snr_min):
-            skipped_low_quality += 1
-            continue
+            # 质量过滤
+            if (cat in ("pulse", "communication") and args.tl_min is not None
+                    and quality < args.tl_min):
+                skipped_low_quality += 1
+                continue
+            if (cat == "radiated_noise" and args.snr_min is not None
+                    and quality < args.snr_min):
+                skipped_low_quality += 1
+                continue
 
-        if l3 not in by_l3:
-            by_l3[l3] = []
-        by_l3[l3].append((item, quality, gt, meta_out))
+            if l3 not in by_l3:
+                by_l3[l3] = []
+            by_l3[l3].append((item, quality, gt, meta_out))
 
     print(f"  Total: {total}")
     print(f"  Skipped (no meta/unknown): {skipped_no_meta}")

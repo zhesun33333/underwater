@@ -3,17 +3,23 @@ import argparse
 import json
 from pathlib import Path
 
-from testsite.core.protocol import validate_protocols
+from testsite.config import load_config
 from testsite.core.scorer import Scorer
 from testsite.core.integrity import validate_predictions
 
 
-def aggregate(rows, manifest, protocols):
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--manifest", required=True, help="Original complete evaluation JSONL")
+    args = parser.parse_args()
+    rows = [json.loads(x) for x in Path(args.input).read_text(encoding="utf-8").splitlines() if x]
     if not rows:
-        raise ValueError("no predictions found")
-    manifest_hash = validate_predictions(rows, manifest)
-    identity = validate_protocols(protocols, rows, manifest_hash)
-    scorer = Scorer({"taxonomy": identity["taxonomy"]})
+        raise SystemExit("no predictions found")
+    manifest_hash = validate_predictions(rows, args.manifest)
+    print(f"[Integrity] verified {len(rows)} unique predictions against {args.manifest}")
+    scorer = Scorer(load_config())
     gts = [x["gt"] for x in rows]
     l1p = [x["turn1_pred"] for x in rows]
     l2p = [x["turn2_pred"]["L2"] for x in rows]
@@ -54,20 +60,8 @@ def aggregate(rows, manifest, protocols):
             "cascade_skipped": reasoning.cascade_skipped,
         },
     }
-    return payload, identity
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", required=True)
-    parser.add_argument("--output", required=True)
-    parser.add_argument("--manifest", required=True)
-    parser.add_argument("--protocol", nargs="+", required=True, help="All protocol_shard_NNN.json files for this run")
-    args = parser.parse_args()
-    rows = [json.loads(line) for line in Path(args.input).read_text(encoding="utf-8").splitlines() if line.strip()]
-    payload, _ = aggregate(rows, args.manifest, args.protocol)
     Path(args.output).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Verified {len(rows)} predictions and scoring version; metrics -> {args.output}")
+    print(f"Full-run L3 accuracy: {l3.accuracy:.2%}; metrics -> {args.output}")
 
 
 if __name__ == "__main__":

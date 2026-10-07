@@ -119,8 +119,7 @@ def generate(data, audio_root, output_prefix):
                     stream.write(json.dumps(value, ensure_ascii=False) + '\n')
             temporary.replace(target)
         provenance.update(status='complete', original_manifest_sha256=file_sha256(output / 'original.jsonl'),
-                          silent_manifest_sha256=file_sha256(output / 'silent.jsonl'),
-                          pairs_sha256=file_sha256(output / 'pairs.jsonl'))
+                          silent_manifest_sha256=file_sha256(output / 'silent.jsonl'))
     except Exception as error:
         provenance.update(status='failed', error=str(error))
         raise

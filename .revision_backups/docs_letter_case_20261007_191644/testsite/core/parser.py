@@ -1,6 +1,6 @@
-"""Single-letter classification parsing with ASCII case tolerance.
+"""Strict letter-only classification parsing.
 
-Model responses must contain exactly one displayed option letter (ASCII A-Z or a-z).
+Model responses must contain exactly one displayed uppercase option letter.
 Aliases are used only to decode trusted option text, never model prose.
 Invalid responses produce unknown labels and parse_status=invalid_format.
 """
@@ -16,16 +16,16 @@ from .scorer import HierPrediction
 # ============================================================
 
 def resolve_short_answer(output: str, prompt: str) -> str:
-    """Resolve one ASCII option letter, ignoring case; reject other response forms.
+    """Resolve one uppercase option letter; reject all other response forms.
 
-    Surrounding whitespace and ASCII letter case are ignored. An empty result means invalid
+    Only surrounding whitespace is ignored. An empty result means invalid
     format or an option that is absent from the supplied question.
     """
     answer = output.strip()
-    if not re.fullmatch(r"[A-Za-z]", answer):
+    if not re.fullmatch(r"[A-Z]", answer):
         return ""
     options = dict(re.findall(r"^\s*([A-Z])\. +([^\r\n]+)", prompt, re.MULTILINE))
-    return options.get(answer.upper(), "")
+    return options.get(answer, "")
 
 
 class OutputParser:

@@ -29,26 +29,9 @@ class LetterOnlyTests(unittest.TestCase):
                     self.assertEqual(pred.raw_output, answer)
                     self.assertEqual(pred.parse_status, 'valid_option')
 
-    def test_ascii_lowercase_equivalence_and_raw_output(self):
-        for key in ['turn1', 'turn2_active', 'turn2_passive']:
-            for prompt in self.prompts[key]:
-                import re
-                letters = re.findall(r'^([A-Z])\. ', prompt, re.MULTILINE)
-                self.assertTrue(letters)
-                for letter in letters:
-                    raw = ' \n' + letter.lower() + '\t'
-                    upper = self.parser.parse('s', letter, prompt)
-                    lower = self.parser.parse('s', raw, prompt)
-                    self.assertEqual((lower.L1, lower.L2, lower.L3),
-                                     (upper.L1, upper.L2, upper.L3))
-                    self.assertEqual(lower.parse_status, 'valid_option')
-                    self.assertEqual(lower.raw_output, raw)
-                    if key == 'turn1':
-                        self.assertEqual(self.parser.parse_turn1('s', raw, prompt).L1, upper.L1)
-
     def test_rejects_prose_labels_multiple_choices_and_bad_format(self):
         for answer in ['BPSK', 'CW', '2FSK', 'cargo', 'cruise', 'A or B',
-                       'Answer: B', 'Option B', 'A.', '(A)', '', 'Z', 'z', 'Ａ', 'ａ', 'ß', 'a b', 'a.',
+                       'Answer: B', 'Option B', 'A.', '(A)', 'a', '', 'Z',
                        'I cannot decide between active and passive.']:
             for key in ['turn1', 'turn2_active', 'turn2_passive']:
                 pred = self.parser.parse('s', answer, self.prompts[key][0])
@@ -69,7 +52,7 @@ class LetterOnlyTests(unittest.TestCase):
                 return [self.second if self.chat_calls == 1 else 'Explanation.'] * len(paths)
 
         sample = EvalSample('s', 'unused.wav', {'L1': 'active', 'L2': 'communication', 'L3': 'BPSK'}, questions=(self.prompts['turn1'][0], self.prompts['turn2_active'][0], self.prompts['turn3']))
-        for first, second, expected, calls in [('active', 'F', 0, 0), ('A', 'BPSK', 0, 2), ('A', 'F', 1, 2), ('a', 'f', 1, 2)]:
+        for first, second, expected, calls in [('active', 'F', 0, 0), ('A', 'BPSK', 0, 2), ('A', 'F', 1, 2)]:
             model = Answers(first, second)
             metrics, _, results = MultiTurnEvaluator(self.config, model).evaluate([sample])
             self.assertEqual(metrics.l3.accuracy, expected)

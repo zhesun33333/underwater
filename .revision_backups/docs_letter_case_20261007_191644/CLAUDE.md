@@ -1,6 +1,4 @@
-# Underwater Acoustic LLM — Project Notes
-
-Current protocol: see `testsite/README.md` and `testsite/评估框架设计文档.md`. Server paths and historical model results below are local notes, not current benchmark conclusions. Formal evaluation reads the three stored dataset questions and embedded `_gt`/`_meta`; it never recovers metadata from raw data. T1/T2 accept one ASCII option letter ignoring case and surrounding whitespace; T3 metrics are unchanged. The current supplementary plan is original audio versus matched silence only.
+# Underwater Acoustic LLM — Project Memory
 
 ## Project overview
 - Goal: Evaluate open-source audio LLMs on underwater acoustic signal classification (3-level hierarchy)
@@ -42,11 +40,11 @@ underwater/
 
 ## Key decisions & fixes made
 1. **Unified L3 term pool**: _L3_TERMS in pipeline_step2_qa.py, pipeline_ship_step2_qa.py, scorer.py all synchronized after quality review
-2. **Embedded GT in JSONL**: filter_test_set.py embeds `_gt` and `_meta` fields; loader.py requires embedded `_gt` and does not recover labels from raw metadata
+2. **Embedded GT in JSONL**: filter_test_set.py embeds `_gt` and `_meta` fields; loader.py reads them first
 3. **Source-stratified evaluation**: replaced fixed-threshold SNR bins with data-driven tertile splits (PulseCom by TL, Ship by SNR), removed meaningless SSP stratification
 4. **Visualization**: 10 charts, all English labels (Chinese font missing on Linux), PR scatter handles overlapping origin points
 5. **cascade_skipped in JSON**: report.py saves it; visualize.py falls back to L1 accuracy if missing
-6. **PulseCom quality statistic**: legacy `tl_db` stores pre-normalization CIR energy gain, `10*log10(sum(h[n]^2))`; it is not SNR or conventional positive transmission loss
+6. **PulseCom SNR = TL**: not a bug — PulseCom signals are clean (no background noise), SNR computation measures channel attenuation
 7. **SSP complexity constant**: all 100 profiles from same shallow-water region, gradient variance ~0.0038 for all
 8. **Ship SNR is real**: line-spectrum to continuous-background ratio from original data generation (~ -22 to -8 dB)
 9. **export_test_set.py**: now only exports WAV + JSONL (no JSON metadata files), since GT is embedded
@@ -57,7 +55,7 @@ underwater/
 2. `pipeline_ship_step1_channel.py --config config_ship.yaml` → broadband CIR → `processed_audio/05_ship_radiated_noise/`
 3. `pipeline_step2_qa.py --config config.yaml` → 3-turn QA → `qa_output/sft_{train,val,test}.jsonl`
 4. `pipeline_ship_step2_qa.py --config config_ship.yaml` → `qa_output/sft_ship_{train,val,test}.jsonl`
-5. Merge PulseCom and Ship records separately for train, val and test; never combine the three splits into one evaluation manifest
+5. Merge: `cat qa_output/sft_*.jsonl > dataset/sft_*.jsonl`
 6. `dataset_stats.py` → statistics
 
 ## Evaluation flow

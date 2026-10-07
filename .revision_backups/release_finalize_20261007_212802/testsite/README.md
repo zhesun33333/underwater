@@ -20,10 +20,9 @@ Active 指为探测或通信而主动发射的信号，Passive 指舰船或水�
 
 ## 快速使用
 
-在包含 `testsite/` 的目录运行。基础 Mock 检查需要 Python 和 PyYAML；静音生成还需要 NumPy、SoundFile。真实模型按相应后端文档准备环境。Python 要求 3.10 或以上。`requirements.txt` 是可移植的 CPU 工具依赖，包含 YAML、NumPy、SoundFile；绘图使用 `requirements-plots.txt`。PyTorch/CUDA 与模型专属依赖按对应后端文档安装，基础依赖不强制安装某个 GPU 版本。
+在包含 `testsite/` 的目录运行。基础 Mock 检查需要 Python 和 PyYAML；静音生成还需要 NumPy、SoundFile。真实模型按相应后端文档准备环境。`requirements.txt` 是历史环境导出，含机器相关路径，不应作为通用安装清单直接使用。
 
 ```powershell
-python -m pip install -r testsite/requirements.txt
 python -m testsite.scripts.run_eval --mock 26 --backend mock --output-dir results/mock_check
 python -m testsite.scripts.run_eval --data release/sft_test.jsonl --audio-root release --backend qwen25_omni --model-id MODEL_PATH --output-dir results/model_run_001
 ```
@@ -62,5 +61,3 @@ python -m unittest discover -s testsite/tests -v
 ```
 
 `tests/` 是可重复的回归检查，应保留。历史试跑输出、一次性调试脚本和编辑器临时副本不属于发布所需文件。
-
-术语逐类审核与适用边界见 [TERMINOLOGY_AUDIT](TERMINOLOGY_AUDIT.md)。静音生成、正式评测、协议核验和配对差值导出已经衔接，按 [SILENT_CONTROL](SILENT_CONTROL.md) 的三个步骤运行。环境快照导出脚本只写入独立的 `requirements.environment.*.txt`，不会覆盖发布依赖。

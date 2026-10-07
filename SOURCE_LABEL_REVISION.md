@@ -1,45 +1,11 @@
-# Source-based Active/Passive wording (source_origin_v2)
+# 源类别与问题模板约定
 
-Active means a signal deliberately transmitted for detection or communication.
-Passive means incidental noise radiated by an operating vessel or underwater vehicle.
-It is a source category, not a receiver operating mode. Internal evaluation keys
-(active/passive), A/B ordering, all 13 leaf labels, audio, and split rules are unchanged.
+Active 表示为探测或通信主动发射的信号，Passive 表示舰船或水下航行目标自身辐射的噪声。分类依据是声源产生机制，不是接收机工作模式。
 
-## Changed paths
+共享实现位于 `testsite/core/source_label_prompts.py` 和 `testsite/core/shared_terminology.py`；顶层同名文件为兼容导入入口。两个 Step 2 使用共享实现，并将问题、参考答案、标准标签和元数据写入 JSONL。
 
-- `source_label_prompts.py`: shared eight Turn 1 templates and validated answers.
-- `archive/pipeline_step2_qa.py` and `archive/pipeline_ship_step2_qa.py`: use shared prompts and record `qa_prompt_version`.
-- `archive/utils/json_parser.py`: passive descriptive label is `source-radiated`.
-- `shared_terminology.py`: source-based wording in generated explanations.
-- `testsite/config/eval_config.yaml`: corrected options, three default evaluation templates, and aliases.
-- Evaluator, text-only, robustness, mock output, and statistics wording updated.
-- New evaluation prediction records include the version and a protocol JSON sidecar.
-  Default real-model output directories include the version to separate new runs.
+当前提示词版本为 `source_origin_v4_best_match_letter_only`。保留多套问题措辞，末尾统一要求选择最合理选项并只输出大写字母。评测接收端兼容单个 ASCII 小写字母，参考答案仍为大写。第三轮提示词和参考解释不因这次接收规则调整而变化。
 
-## Existing data and results
+正式评测使用记录中的问题，不从配置随机重建。更新代码不会自动修改既有 JSONL。需要新问题时，可在 `archive/` 下运行两个 Step 2，配置新的 `qa_output` 目录保存结果，随后更新筛选和导出产物，无须仅为问题措辞重新运行声学仿真。
 
-Existing JSONL datasets and saved model results were NOT rewritten. Code changes
-apply to future generation. Existing result metrics are not corrected-prompt results.
-Original modified code/config files are preserved under `.revision_backups/`.
-Use a controlled rerun to quantify the wording effect; do not relabel old metrics as v2.
-
-## Regenerate QA without rerunning acoustics
-
-From `archive/`, with configs pointing to the existing processed audio/metadata:
-
-```sh
-python pipeline_step2_qa.py --config config.yaml
-python pipeline_ship_step2_qa.py --config config_ship.yaml
-```
-
-These commands overwrite the configured QA output files. Use separate qa_output
-paths for v2 to keep old data available. Regenerate merged/filtered/exported QA
-artifacts from these outputs before training or distributing the corrected dataset.
-When comparing evaluation versions, keep the original 2600 audio sample IDs fixed.
-The evaluator obtains prompts from its config rather than the dataset dialogues.
-
-## Checks
-
-```sh
-python -m unittest discover -s archive/tests -p test_source_label_prompts.py -v
-```
+详见 [数据发布说明](testsite/DATASET_EVALUATION.md) 和 [评估框架](testsite/评估框架设计文档.md)。

@@ -60,13 +60,7 @@ with open(out, "w", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
 print(f"Merged {len(records)} unique predictions -> {out}")
 PY
-protocols=()
-for shard in "${!gpus[@]}"; do
-  printf -v protocol_name "protocol_shard_%03d.json" "$shard"
-  protocols+=("$output_root/shard_$shard/$protocol_name")
-done
 python -m testsite.scripts.merge_predictions \
   --input "$output_root/merged/predictions.jsonl" \
   --output "$output_root/merged/metrics.json" \
-  --manifest "$data" \
-  --protocol "${protocols[@]}"
+  --manifest "$data"
