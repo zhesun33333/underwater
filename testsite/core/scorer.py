@@ -3,7 +3,7 @@
 
 指标:
   - L1/L2/L3 Accuracy, Per-class P/R/F1, Macro F1, Confusion Matrix
-  - L2-given-L1, L3-given-L2, Hierarchical Joint Accuracy
+  - L2-given-L1, L3-given-L2
   - 推理质量: Domain Term Match Rate
 """
 
@@ -25,6 +25,7 @@ class HierPrediction:
     L3: str                      # "CW" | "LFM" | ... | "unknown"
     parse_tier: int              # 1=直接命中, 2=关键词回溯, 3=失败
     raw_output: str = ""         # 模型原始输出文本
+    parse_status: str = "not_parsed"
 
 
 # ============================================================
@@ -53,7 +54,6 @@ class HierarchicalMetrics:
     l3: Optional[LevelMetrics] = None
     l2_given_l1: float = 0.0
     l3_given_l2: float = 0.0
-    joint_accuracy: float = 0.0
     parse_tier_dist: Dict[int, int] = field(default_factory=dict)
 
 
@@ -156,7 +156,7 @@ class Scorer:
     # L3 术语-类别对齐矩阵
     # 从 shared_terminology.py 统一导入 (single source of truth)
     # ================================================================
-    from shared_terminology import L3_SHOULD as _L3_SHOULD, get_should_not as _get_should_not
+    from .shared_terminology import L3_SHOULD as _L3_SHOULD, get_should_not as _get_should_not
     _get_should_not = staticmethod(_get_should_not)
 
     _ALL_L3_TERMS = set()
@@ -168,6 +168,32 @@ class Scorer:
         """Match a phrase case-insensitively without matching inside words."""
         pattern = rf"(?<![a-z0-9]){re.escape(term.lower())}(?![a-z0-9])"
         return re.search(pattern, text.lower()) is not None
+
+    @staticmethod
+    def _longest_term_matches(text: str, terms) -> set:
+        """Keep longest non-overlapping occurrences across the full inventory.
+
+        Equal-length overlaps prefer the earlier occurrence, then lexical order.
+        A shorter term can still match elsewhere outside an accepted span.
+        """
+        text_lower = text.lower()
+        candidates = []
+        for term in terms:
+            if not term:
+                continue
+            pattern = rf"(?<![a-z0-9]){re.escape(term.lower())}(?![a-z0-9])"
+            for match in re.finditer(pattern, text_lower):
+                candidates.append((match.start(), match.end(), term))
+        candidates.sort(key=lambda item: (-(item[1] - item[0]), item[0], item[2]))
+        accepted = []
+        hits = set()
+        for start, end, term in candidates:
+            if any(start < other_end and other_start < end
+                   for other_start, other_end in accepted):
+                continue
+            accepted.append((start, end))
+            hits.add(term)
+        return hits
 
     def compute_reasoning_quality(
         self,
@@ -192,8 +218,9 @@ class Scorer:
             should_set = self._L3_SHOULD.get(l3, set())
             should_not_set = self._get_should_not(l3)
 
-            should_hits = [t for t in should_set if self._contains_term(text, t)]
-            should_not_hits = [t for t in should_not_set if self._contains_term(text, t)]
+            hits = self._longest_term_matches(text, should_set | should_not_set)
+            should_hits = hits & should_set
+            should_not_hits = hits & should_not_set
 
             has_positive = len(should_hits) >= 1
             has_negative = len(should_not_hits) >= 1

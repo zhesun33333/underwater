@@ -17,6 +17,8 @@ class PromptRobustnessEvaluator:
     def __init__(self, config: dict, inference: ModelInference):
         self.inference = inference
         self.parser = OutputParser(config)
+        if "prompts" not in config or "three_turn" not in config["prompts"]:
+            raise ValueError("Prompt-variation ablation requires explicit alternative templates; standard evaluation uses dataset questions.")
         self.prompts = config["prompts"]["three_turn"]
 
     def evaluate(self, samples: List[EvalSample]) -> dict:
@@ -67,7 +69,7 @@ class PromptRobustnessEvaluator:
             if pred1.L1 == "unknown":
                 continue
 
-            l1_label = "actively transmitted" if pred1.L1 == "active" else "passively received"
+            l1_label = "actively transmitted" if pred1.L1 == "active" else "source-radiated"
             t2_pool = t2_active if pred1.L1 == "active" else t2_passive
 
             l2_votes: Dict[str, int] = {}

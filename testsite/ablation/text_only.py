@@ -4,7 +4,6 @@
 若 text-only 准确率显著 > 随机, 说明模型在利用 prompt 中的偏见而非音频。
 """
 
-import random
 from typing import List, Tuple
 
 from ..core.loader import EvalSample
@@ -21,31 +20,24 @@ class TextOnlyEvaluator:
         self.inference = inference
         self.parser = OutputParser(config)
         self.scorer = Scorer(config)
-        self.prompts = config["prompts"]["three_turn"]
 
     def evaluate(
         self, samples: List[EvalSample]
     ) -> Tuple[HierarchicalMetrics, List[TurnResult]]:
         results: List[TurnResult] = []
-        rng = random.Random(42)
+        for sample in samples:
+            sample.validate_questions()
         cascade_count = 0
 
         for sample in samples:
             # Turn 1: L1 判别 (无音频)
-            q1 = rng.choice(self.prompts["turn1"])
+            q1 = sample.questions[0]
             a1 = self.inference.generate(sample.audio_path, q1, no_audio=True)
             pred1 = self.parser.parse_turn1(sample.sample_id, a1, prompt=q1)
             t1_correct = (pred1.L1 == sample.gt["L1"])
 
             if t1_correct:
-                l1_detected = pred1.L1
-                if l1_detected == "active":
-                    t2_templates = self.prompts["turn2_active"]
-                else:
-                    t2_templates = self.prompts["turn2_passive"]
-
-                q2 = rng.choice(t2_templates).replace(
-                    "{L1}", self._l1_display_name(l1_detected))
+                q2 = sample.questions[1]
 
                 history_t2 = [
                     {"from": "human", "value": q1},
@@ -60,7 +52,7 @@ class TextOnlyEvaluator:
                 )
                 skipped = False
 
-                q3 = self.prompts["turn3"]
+                q3 = sample.questions[2]
                 history_t3 = history_t2 + [
                     {"from": "gpt", "value": a2},
                     {"from": "human", "value": q3},
@@ -119,11 +111,6 @@ class TextOnlyEvaluator:
         l2_l3_c = sum(
             r.turn2_pred.L2 == g["L2"] and r.turn2_pred.L3 == g["L3"]
             for r, g in zip(results, gts))
-        all3_c = sum(
-            r.turn1_pred.L1 == g["L1"]
-            and r.turn2_pred.L2 == g["L2"]
-            and r.turn2_pred.L3 == g["L3"]
-            for r, g in zip(results, gts))
 
         metrics = HierarchicalMetrics(
             total_samples=n,
@@ -132,7 +119,6 @@ class TextOnlyEvaluator:
             l3=l3_metrics,
             l2_given_l1=l1_l2_c / l1_c if l1_c > 0 else 0.0,
             l3_given_l2=l2_l3_c / l2_c if l2_c > 0 else 0.0,
-            joint_accuracy=all3_c / n if n > 0 else 0.0,
         )
         return metrics, results
 
@@ -141,5 +127,5 @@ class TextOnlyEvaluator:
         if l1_key == "active":
             return "actively transmitted"
         elif l1_key == "passive":
-            return "passively received"
+            return "source-radiated"
         return "unidentified"

@@ -25,7 +25,7 @@ _L3_NAMES = {
 }
 _L1_NAMES = {
     "active": "Actively transmitted signal",
-    "passive": "Passively received signal",
+    "passive": "Source-radiated noise (Passive)",
 }
 _L2_NAMES = {
     "pulse": "Detection pulse",

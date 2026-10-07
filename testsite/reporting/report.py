@@ -2,7 +2,7 @@
 
 输出 Markdown 格式报告，包含:
   1. 层级分类 (L1/L2/L3 Acc, Per-class F1, Confusion)
-  2. 层级联合指标 (L2|L1, L3|L2, Joint)
+  2. 层级联合指标 (L2|L1, L3|L2)
   3. 推理质量 (Domain Term Match)
   4. Parse Tier 分布
   5. 结论与建议
@@ -30,7 +30,7 @@ class ReportGenerator:
         sections = [
             self._header(model_name),
             self._hierarchical_section(hierarchical),
-            self._joint_section(hierarchical),
+            self._conditional_section(hierarchical),
         ]
 
         if reasoning:
@@ -61,7 +61,6 @@ class ReportGenerator:
             "l3_macro_f1": h.l3.macro_f1 if h.l3 else 0,
             "l2_given_l1": h.l2_given_l1,
             "l3_given_l2": h.l3_given_l2,
-            "joint_accuracy": h.joint_accuracy,
             "parse_tier_dist": h.parse_tier_dist,
         }
         # L3 逐类详细数据
@@ -113,15 +112,14 @@ class ReportGenerator:
         return "\n".join(lines)
 
     @staticmethod
-    def _joint_section(h: HierarchicalMetrics) -> str:
+    def _conditional_section(h: HierarchicalMetrics) -> str:
         return f"""---
-## 2. Hierarchical Joint Metrics
+## 2. Conditional Accuracy
 
 | Metric | Value | Description |
 |------|------|------|
 | L2\\|L1 | **{h.l2_given_l1:.2%}** | Conditional prob. L2 correct given L1 correct |
 | L3\\|L2 | **{h.l3_given_l2:.2%}** | Conditional prob. L3 correct given L2 correct |
-| Hierarchical Joint | **{h.joint_accuracy:.2%}** | L1 + L2 + L3 all correct |
 """
 
     @staticmethod

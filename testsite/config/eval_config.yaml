@@ -1,3 +1,4 @@
+qa_prompt_version: source_origin_v4_best_match_letter_only
 # Underwater Acoustic LLM Evaluation Configuration
 # 3-level hierarchical classification — no parameter estimation, no ablation
 
@@ -7,18 +8,18 @@
 taxonomy:
   L1:
     name: "Active/Passive"
-    description: "Determine whether the signal is actively transmitted or passively received"
+    description: "Classify the source as deliberate acoustic transmission or incidental platform-radiated noise"
     classes:
       - key: active
-        name: "Actively transmitted signal"
+        name: "Active - Deliberately transmitted signal"
         aliases: ["actively transmitted", "active", "active signal", "active transmission",
                   "active sonar", "active sonar signal", "active detection",
-                  "artificially transmitted", "deliberately emitted", "sonar transmission"]
+                  "deliberately transmitted", "purposefully transmitted", "artificially transmitted", "deliberately emitted", "sonar transmission"]
       - key: passive
-        name: "Passively received signal"
-        aliases: ["passively received", "passive", "passive signal", "passive reception",
-                  "passive listening", "target-radiated", "target-radiated signal",
-                  "target-radiated noise", "radiated noise", "passive detection",
+        name: "Passive - Source-radiated noise"
+        aliases: ["source-radiated", "source-radiated noise", "platform-radiated noise",
+                  "passive", "passive signal", "target-radiated", "target-radiated signal",
+                  "target-radiated noise", "radiated noise",
                   "ship-radiated", "self-radiated by the source platform"]
 
   L2:
@@ -129,18 +130,18 @@ prompts:
   # --- 3-turn dialogue ---
   three_turn:
     turn1:
-      - "Determine whether this underwater acoustic signal is actively transmitted or passively received.\nOptions:\nA. Actively transmitted signal\nB. Passively received signal"
-      - "Is the signal in this audio deliberately transmitted, or received through passive listening?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal"
-      - "First, the most basic question: is this signal active or passive?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal"
+      - "Determine whether this underwater sound is a deliberately transmitted signal or source-radiated noise.\nOptions:\nA. Active - Deliberately transmitted signal\nB. Passive - Source-radiated noise\nSelect the option that you consider the best match for the audio. You must choose exactly one of the listed options. Reply with the uppercase option letter only, without explanation or any additional text."
+      - "Is the sound intentionally transmitted for detection or communication, or radiated as noise by an operating platform?\nOptions:\nA. Active - Deliberately transmitted signal\nB. Passive - Source-radiated noise\nSelect the option that you consider the best match for the audio. You must choose exactly one of the listed options. Reply with the uppercase option letter only, without explanation or any additional text."
+      - "Classify the sound by its source: deliberate transmission or platform-radiated noise.\nOptions:\nA. Active - Deliberately transmitted signal\nB. Passive - Source-radiated noise\nSelect the option that you consider the best match for the audio. You must choose exactly one of the listed options. Reply with the uppercase option letter only, without explanation or any additional text."
     turn2_active:
-      - "Good — the signal is {L1}. Now determine whether it is a detection pulse or communication signal, and specify the exact type.\nOptions:\nA. Active — Detection pulse — CW (Continuous Wave)\nB. Active — Detection pulse — LFM (Linear Frequency Modulation)\nC. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)\nD. Active — Communication — 2FSK (Binary Frequency Shift Keying)\nE. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)\nF. Active — Communication — BPSK (Binary Phase Shift Keying)\nG. Active — Communication — QPSK (Quadrature Phase Shift Keying)\nH. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)"
-      - "Understood — it is {L1}. Now identify which subcategory it belongs to.\nOptions:\nA. Active — Detection pulse — CW (Continuous Wave)\nB. Active — Detection pulse — LFM (Linear Frequency Modulation)\nC. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)\nD. Active — Communication — 2FSK (Binary Frequency Shift Keying)\nE. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)\nF. Active — Communication — BPSK (Binary Phase Shift Keying)\nG. Active — Communication — QPSK (Quadrature Phase Shift Keying)\nH. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)"
-      - "Signal is {L1}. What is its specific signal type?\nOptions:\nA. Active — Detection pulse — CW (Continuous Wave)\nB. Active — Detection pulse — LFM (Linear Frequency Modulation)\nC. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)\nD. Active — Communication — 2FSK (Binary Frequency Shift Keying)\nE. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)\nF. Active — Communication — BPSK (Binary Phase Shift Keying)\nG. Active — Communication — QPSK (Quadrature Phase Shift Keying)\nH. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)"
+      - "Good — the signal is {L1}. Now determine whether it is a detection pulse or communication signal, and specify the exact type.\nOptions:\nA. Active — Detection pulse — CW (Continuous Wave)\nB. Active — Detection pulse — LFM (Linear Frequency Modulation)\nC. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)\nD. Active — Communication — 2FSK (Binary Frequency Shift Keying)\nE. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)\nF. Active — Communication — BPSK (Binary Phase Shift Keying)\nG. Active — Communication — QPSK (Quadrature Phase Shift Keying)\nH. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)\nSelect the option that you consider the best match for the audio. You must choose exactly one of the listed options. Reply with the uppercase option letter only, without explanation or any additional text."
+      - "Understood — it is {L1}. Now identify which subcategory it belongs to.\nOptions:\nA. Active — Detection pulse — CW (Continuous Wave)\nB. Active — Detection pulse — LFM (Linear Frequency Modulation)\nC. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)\nD. Active — Communication — 2FSK (Binary Frequency Shift Keying)\nE. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)\nF. Active — Communication — BPSK (Binary Phase Shift Keying)\nG. Active — Communication — QPSK (Quadrature Phase Shift Keying)\nH. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)\nSelect the option that you consider the best match for the audio. You must choose exactly one of the listed options. Reply with the uppercase option letter only, without explanation or any additional text."
+      - "Signal is {L1}. What is its specific signal type?\nOptions:\nA. Active — Detection pulse — CW (Continuous Wave)\nB. Active — Detection pulse — LFM (Linear Frequency Modulation)\nC. Active — Detection pulse — HFM (Hyperbolic Frequency Modulation)\nD. Active — Communication — 2FSK (Binary Frequency Shift Keying)\nE. Active — Communication — 4FSK (Quaternary Frequency Shift Keying)\nF. Active — Communication — BPSK (Binary Phase Shift Keying)\nG. Active — Communication — QPSK (Quadrature Phase Shift Keying)\nH. Active — Communication — OFDM (Orthogonal Frequency Division Multiplexing)\nSelect the option that you consider the best match for the audio. You must choose exactly one of the listed options. Reply with the uppercase option letter only, without explanation or any additional text."
     turn2_passive:
-      - "Good — the signal is {L1}. Identify which type of vessel or underwater vehicle produced this radiated noise.\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater vehicle"
-      - "Confirmed as {L1}. Now identify the specific type of noise source.\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater vehicle"
-      - "Signal is {L1}. What kind of platform emitted this noise?\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater vehicle"
-    turn3: "Please briefly explain your reasoning."
+      - "Good — the signal is {L1}. Identify which type of vessel or underwater vehicle produced this radiated noise.\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater vehicle\nSelect the option that you consider the best match for the audio. You must choose exactly one of the listed options. Reply with the uppercase option letter only, without explanation or any additional text."
+      - "Confirmed as {L1}. Now identify the specific type of noise source.\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater vehicle\nSelect the option that you consider the best match for the audio. You must choose exactly one of the listed options. Reply with the uppercase option letter only, without explanation or any additional text."
+      - "Signal is {L1}. What kind of platform emitted this noise?\nOptions:\nA. Passive — Ship-radiated noise — Cargo vessel\nB. Passive — Ship-radiated noise — Cruise ship\nC. Passive — Ship-radiated noise — Fishing vessel\nD. Passive — Ship-radiated noise — Naval vessel\nE. Passive — Ship-radiated noise — Underwater vehicle\nSelect the option that you consider the best match for the audio. You must choose exactly one of the listed options. Reply with the uppercase option letter only, without explanation or any additional text."
+    turn3: "Briefly explain your previous classification using acoustic cues you can identify in the audio. Focus on the observed cues and how they support your choice. Do not list, compare, or rule out alternative classes, and do not merely repeat the class name or its definition. If the acoustic evidence is insufficient, state this explicitly rather than inventing supporting details."
 
 # ============================================================
 # Model Configuration

@@ -1,0 +1,594 @@
+{
+  "run_signature": "0ea5ebe94b85777a8acbd28b777a444e419540bb84ad01d18eab100e347a186a",
+  "manifest_sha256": "mock",
+  "run_identity": {
+    "run_id": "6ff0f7a4becd448882a5590ba074973b",
+    "manifest_sha256": "mock",
+    "model": {
+      "backend": "mock",
+      "model_id": "/root/autodl-tmp/models/Qwen2.5-Omni-7B",
+      "torch_dtype": "bfloat16",
+      "max_new_tokens": 256,
+      "temperature": 0.0,
+      "attn_implementation": "sdpa",
+      "mock": {
+        "accuracy": 0.85
+      }
+    },
+    "taxonomy": {
+      "L1": {
+        "name": "Active/Passive",
+        "description": "Classify the source as deliberate acoustic transmission or incidental platform-radiated noise",
+        "classes": [
+          {
+            "key": "active",
+            "name": "Active - Deliberately transmitted signal",
+            "aliases": [
+              "actively transmitted",
+              "active",
+              "active signal",
+              "active transmission",
+              "active sonar",
+              "active sonar signal",
+              "active detection",
+              "deliberately transmitted",
+              "purposefully transmitted",
+              "artificially transmitted",
+              "deliberately emitted",
+              "sonar transmission"
+            ]
+          },
+          {
+            "key": "passive",
+            "name": "Passive - Source-radiated noise",
+            "aliases": [
+              "source-radiated",
+              "source-radiated noise",
+              "platform-radiated noise",
+              "passive",
+              "passive signal",
+              "target-radiated",
+              "target-radiated signal",
+              "target-radiated noise",
+              "radiated noise",
+              "ship-radiated",
+              "self-radiated by the source platform"
+            ]
+          }
+        ]
+      },
+      "L2": {
+        "name": "Signal Subcategory",
+        "description": "Further classify within the L1 category",
+        "classes": [
+          {
+            "key": "pulse",
+            "name": "Detection pulse",
+            "parent": "active",
+            "aliases": [
+              "detection pulse",
+              "sonar pulse",
+              "sonar detection pulse",
+              "pulse signal",
+              "detection pulse class",
+              "active sonar pulse"
+            ]
+          },
+          {
+            "key": "communication",
+            "name": "Communication signal",
+            "parent": "active",
+            "aliases": [
+              "communication",
+              "communication signal",
+              "underwater communication",
+              "digital communication",
+              "underwater acoustic communication",
+              "acoustic communication"
+            ]
+          },
+          {
+            "key": "ship_noise",
+            "name": "Ship-radiated noise",
+            "parent": "passive",
+            "aliases": [
+              "ship-radiated noise",
+              "ship radiated noise",
+              "vessel-radiated noise",
+              "ship noise",
+              "vessel noise",
+              "radiated noise",
+              "target-radiated noise",
+              "shipping noise"
+            ]
+          }
+        ]
+      },
+      "L3": {
+        "name": "Specific Type",
+        "description": "Finest-grained signal/target type",
+        "classes": [
+          {
+            "key": "CW",
+            "name": "CW (Continuous Wave)",
+            "parent": "pulse",
+            "aliases": [
+              "CW",
+              "CW pulse",
+              "continuous wave",
+              "CW continuous wave",
+              "single-frequency pulse",
+              "single frequency",
+              "single tone pulse"
+            ]
+          },
+          {
+            "key": "LFM",
+            "name": "LFM (Linear Frequency Modulation)",
+            "parent": "pulse",
+            "aliases": [
+              "LFM",
+              "LFM pulse",
+              "linear frequency modulation",
+              "linear chirp",
+              "LFM chirp",
+              "linear sweep",
+              "linear FM"
+            ]
+          },
+          {
+            "key": "HFM",
+            "name": "HFM (Hyperbolic Frequency Modulation)",
+            "parent": "pulse",
+            "aliases": [
+              "HFM",
+              "HFM pulse",
+              "hyperbolic frequency modulation",
+              "hyperbolic chirp",
+              "hyperbolic FM",
+              "hyperbolic sweep",
+              "Doppler-invariant pulse"
+            ]
+          },
+          {
+            "key": "2FSK",
+            "name": "2FSK (Binary Frequency Shift Keying)",
+            "parent": "communication",
+            "aliases": [
+              "2FSK",
+              "binary FSK",
+              "binary frequency shift keying",
+              "2-FSK",
+              "2fsk",
+              "2-level FSK"
+            ]
+          },
+          {
+            "key": "4FSK",
+            "name": "4FSK (Quaternary Frequency Shift Keying)",
+            "parent": "communication",
+            "aliases": [
+              "4FSK",
+              "quaternary FSK",
+              "quaternary frequency shift keying",
+              "4-FSK",
+              "4fsk",
+              "4-ary FSK",
+              "4-level FSK"
+            ]
+          },
+          {
+            "key": "BPSK",
+            "name": "BPSK (Binary Phase Shift Keying)",
+            "parent": "communication",
+            "aliases": [
+              "BPSK",
+              "binary PSK",
+              "binary phase shift keying",
+              "BPSK modulation",
+              "bpsk",
+              "2-PSK"
+            ]
+          },
+          {
+            "key": "QPSK",
+            "name": "QPSK (Quadrature Phase Shift Keying)",
+            "parent": "communication",
+            "aliases": [
+              "QPSK",
+              "quadrature PSK",
+              "quadrature phase shift keying",
+              "QPSK modulation",
+              "qpsk",
+              "4-PSK"
+            ]
+          },
+          {
+            "key": "OFDM",
+            "name": "OFDM (Orthogonal Frequency Division Multiplexing)",
+            "parent": "communication",
+            "aliases": [
+              "OFDM",
+              "orthogonal frequency division multiplexing",
+              "OFDM modulation",
+              "ofdm",
+              "multi-carrier modulation"
+            ]
+          },
+          {
+            "key": "cargo",
+            "name": "Cargo vessel",
+            "parent": "ship_noise",
+            "aliases": [
+              "cargo vessel",
+              "cargo ship",
+              "cargo",
+              "merchant vessel",
+              "merchant ship",
+              "commercial vessel",
+              "commercial ship",
+              "freighter",
+              "container ship"
+            ]
+          },
+          {
+            "key": "cruise",
+            "name": "Cruise ship",
+            "parent": "ship_noise",
+            "aliases": [
+              "cruise ship",
+              "cruise",
+              "passenger vessel",
+              "passenger ship",
+              "cruise liner",
+              "ocean liner",
+              "cruise passenger"
+            ]
+          },
+          {
+            "key": "fishing",
+            "name": "Fishing vessel",
+            "parent": "ship_noise",
+            "aliases": [
+              "fishing vessel",
+              "fishing boat",
+              "fishing",
+              "fisherman boat",
+              "small fishing",
+              "trawler",
+              "commercial fishing"
+            ]
+          },
+          {
+            "key": "warship",
+            "name": "Naval vessel",
+            "parent": "ship_noise",
+            "aliases": [
+              "naval vessel",
+              "warship",
+              "naval ship",
+              "military vessel",
+              "military ship",
+              "combat vessel",
+              "navy ship",
+              "frigate",
+              "destroyer"
+            ]
+          },
+          {
+            "key": "underwater_target",
+            "name": "Underwater vehicle",
+            "parent": "ship_noise",
+            "aliases": [
+              "underwater target",
+              "underwater vehicle",
+              "underwater object",
+              "subsurface target",
+              "submerged target",
+              "UUV",
+              "underwater craft",
+              "unmanned underwater vehicle",
+              "underwater drone",
+              "AUV",
+              "submarine"
+            ]
+          }
+        ]
+      }
+    },
+    "implementation": {
+      "testsite/core/parser.py": "b1999b3fe716c2804c2f5c1471e8e5484e0c51b098ffeafde2f3440e8c92d4df",
+      "testsite/core/scorer.py": "8261c95a421ab548ba59b547468c1ed9fe578373d4c7a744f8c6b3b199c85288",
+      "testsite/eval/multi_turn.py": "cbe7f7ef3fc470584f258e029cd75a5c4630a450859d44b36f0c8036a910657b",
+      "testsite/core/inference.py": "dd44bcc0084aab4d8568dcfcdf37af8f8c249291efb9128fd2777e27509c48b9",
+      "shared_terminology.py": "a436839805a44f0865b7ef331d31197b604fe619600580601b00eb1f7635f84a"
+    }
+  },
+  "shard_index": 0,
+  "num_shards": 1,
+  "question_source": "dataset.conversations.human",
+  "qa_prompt_versions": [
+    "source_origin_v3_letter_only"
+  ],
+  "taxonomy": {
+    "L1": {
+      "name": "Active/Passive",
+      "description": "Classify the source as deliberate acoustic transmission or incidental platform-radiated noise",
+      "classes": [
+        {
+          "key": "active",
+          "name": "Active - Deliberately transmitted signal",
+          "aliases": [
+            "actively transmitted",
+            "active",
+            "active signal",
+            "active transmission",
+            "active sonar",
+            "active sonar signal",
+            "active detection",
+            "deliberately transmitted",
+            "purposefully transmitted",
+            "artificially transmitted",
+            "deliberately emitted",
+            "sonar transmission"
+          ]
+        },
+        {
+          "key": "passive",
+          "name": "Passive - Source-radiated noise",
+          "aliases": [
+            "source-radiated",
+            "source-radiated noise",
+            "platform-radiated noise",
+            "passive",
+            "passive signal",
+            "target-radiated",
+            "target-radiated signal",
+            "target-radiated noise",
+            "radiated noise",
+            "ship-radiated",
+            "self-radiated by the source platform"
+          ]
+        }
+      ]
+    },
+    "L2": {
+      "name": "Signal Subcategory",
+      "description": "Further classify within the L1 category",
+      "classes": [
+        {
+          "key": "pulse",
+          "name": "Detection pulse",
+          "parent": "active",
+          "aliases": [
+            "detection pulse",
+            "sonar pulse",
+            "sonar detection pulse",
+            "pulse signal",
+            "detection pulse class",
+            "active sonar pulse"
+          ]
+        },
+        {
+          "key": "communication",
+          "name": "Communication signal",
+          "parent": "active",
+          "aliases": [
+            "communication",
+            "communication signal",
+            "underwater communication",
+            "digital communication",
+            "underwater acoustic communication",
+            "acoustic communication"
+          ]
+        },
+        {
+          "key": "ship_noise",
+          "name": "Ship-radiated noise",
+          "parent": "passive",
+          "aliases": [
+            "ship-radiated noise",
+            "ship radiated noise",
+            "vessel-radiated noise",
+            "ship noise",
+            "vessel noise",
+            "radiated noise",
+            "target-radiated noise",
+            "shipping noise"
+          ]
+        }
+      ]
+    },
+    "L3": {
+      "name": "Specific Type",
+      "description": "Finest-grained signal/target type",
+      "classes": [
+        {
+          "key": "CW",
+          "name": "CW (Continuous Wave)",
+          "parent": "pulse",
+          "aliases": [
+            "CW",
+            "CW pulse",
+            "continuous wave",
+            "CW continuous wave",
+            "single-frequency pulse",
+            "single frequency",
+            "single tone pulse"
+          ]
+        },
+        {
+          "key": "LFM",
+          "name": "LFM (Linear Frequency Modulation)",
+          "parent": "pulse",
+          "aliases": [
+            "LFM",
+            "LFM pulse",
+            "linear frequency modulation",
+            "linear chirp",
+            "LFM chirp",
+            "linear sweep",
+            "linear FM"
+          ]
+        },
+        {
+          "key": "HFM",
+          "name": "HFM (Hyperbolic Frequency Modulation)",
+          "parent": "pulse",
+          "aliases": [
+            "HFM",
+            "HFM pulse",
+            "hyperbolic frequency modulation",
+            "hyperbolic chirp",
+            "hyperbolic FM",
+            "hyperbolic sweep",
+            "Doppler-invariant pulse"
+          ]
+        },
+        {
+          "key": "2FSK",
+          "name": "2FSK (Binary Frequency Shift Keying)",
+          "parent": "communication",
+          "aliases": [
+            "2FSK",
+            "binary FSK",
+            "binary frequency shift keying",
+            "2-FSK",
+            "2fsk",
+            "2-level FSK"
+          ]
+        },
+        {
+          "key": "4FSK",
+          "name": "4FSK (Quaternary Frequency Shift Keying)",
+          "parent": "communication",
+          "aliases": [
+            "4FSK",
+            "quaternary FSK",
+            "quaternary frequency shift keying",
+            "4-FSK",
+            "4fsk",
+            "4-ary FSK",
+            "4-level FSK"
+          ]
+        },
+        {
+          "key": "BPSK",
+          "name": "BPSK (Binary Phase Shift Keying)",
+          "parent": "communication",
+          "aliases": [
+            "BPSK",
+            "binary PSK",
+            "binary phase shift keying",
+            "BPSK modulation",
+            "bpsk",
+            "2-PSK"
+          ]
+        },
+        {
+          "key": "QPSK",
+          "name": "QPSK (Quadrature Phase Shift Keying)",
+          "parent": "communication",
+          "aliases": [
+            "QPSK",
+            "quadrature PSK",
+            "quadrature phase shift keying",
+            "QPSK modulation",
+            "qpsk",
+            "4-PSK"
+          ]
+        },
+        {
+          "key": "OFDM",
+          "name": "OFDM (Orthogonal Frequency Division Multiplexing)",
+          "parent": "communication",
+          "aliases": [
+            "OFDM",
+            "orthogonal frequency division multiplexing",
+            "OFDM modulation",
+            "ofdm",
+            "multi-carrier modulation"
+          ]
+        },
+        {
+          "key": "cargo",
+          "name": "Cargo vessel",
+          "parent": "ship_noise",
+          "aliases": [
+            "cargo vessel",
+            "cargo ship",
+            "cargo",
+            "merchant vessel",
+            "merchant ship",
+            "commercial vessel",
+            "commercial ship",
+            "freighter",
+            "container ship"
+          ]
+        },
+        {
+          "key": "cruise",
+          "name": "Cruise ship",
+          "parent": "ship_noise",
+          "aliases": [
+            "cruise ship",
+            "cruise",
+            "passenger vessel",
+            "passenger ship",
+            "cruise liner",
+            "ocean liner",
+            "cruise passenger"
+          ]
+        },
+        {
+          "key": "fishing",
+          "name": "Fishing vessel",
+          "parent": "ship_noise",
+          "aliases": [
+            "fishing vessel",
+            "fishing boat",
+            "fishing",
+            "fisherman boat",
+            "small fishing",
+            "trawler",
+            "commercial fishing"
+          ]
+        },
+        {
+          "key": "warship",
+          "name": "Naval vessel",
+          "parent": "ship_noise",
+          "aliases": [
+            "naval vessel",
+            "warship",
+            "naval ship",
+            "military vessel",
+            "military ship",
+            "combat vessel",
+            "navy ship",
+            "frigate",
+            "destroyer"
+          ]
+        },
+        {
+          "key": "underwater_target",
+          "name": "Underwater vehicle",
+          "parent": "ship_noise",
+          "aliases": [
+            "underwater target",
+            "underwater vehicle",
+            "underwater object",
+            "subsurface target",
+            "submerged target",
+            "UUV",
+            "underwater craft",
+            "unmanned underwater vehicle",
+            "underwater drone",
+            "AUV",
+            "submarine"
+          ]
+        }
+      ]
+    }
+  }
+}

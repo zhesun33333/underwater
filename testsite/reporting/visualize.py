@@ -170,10 +170,10 @@ def plot_confusion_matrix(metrics: dict, output_dir: Path):
 
 def plot_hierarchical_accuracy(metrics: dict, output_dir: Path):
     vals = np.array([metrics.get(k, 0) for k in
-                     ("l1_accuracy", "l2_accuracy", "l3_accuracy", "joint_accuracy")]) * 100
-    labels = ["L1\nActive/passive", "L2\nSignal family", "L3\n13 classes", "Joint\nAll levels"]
+                     ("l1_accuracy", "l2_accuracy", "l3_accuracy")]) * 100
+    labels = ["L1\nActive/passive", "L2\nSignal family", "L3\n13 classes"]
     fig, ax = plt.subplots(figsize=(6.8, 4.2))
-    bars = ax.bar(labels, vals, color=[NAVY, BLUE, ORANGE, PURPLE], width=.62)
+    bars = ax.bar(labels, vals, color=[NAVY, BLUE, ORANGE], width=.62)
     _annotate_bars(ax, bars, vals)
     ax.set_ylabel("Accuracy (%)")
     ax.set_title("Hierarchical classification accuracy")
@@ -252,9 +252,9 @@ def plot_reasoning_quality(metrics: dict, total_samples: int, output_dir: Path):
 def plot_summary_dashboard(metrics: dict, output_dir: Path, model_name: str = ""):
     fig, axes = plt.subplots(2, 2, figsize=(10.2, 7.3))
     acc = np.array([metrics.get(k, 0) for k in
-                    ("l1_accuracy", "l2_accuracy", "l3_accuracy", "joint_accuracy")]) * 100
+                    ("l1_accuracy", "l2_accuracy", "l3_accuracy")]) * 100
     ax = axes[0, 0]
-    bars = ax.barh(["L1", "L2", "L3", "Joint"], acc, color=[NAVY, BLUE, ORANGE, PURPLE])
+    bars = ax.barh(["L1", "L2", "L3"], acc, color=[NAVY, BLUE, ORANGE])
     for bar, value in zip(bars, acc):
         ax.text(value + .7, bar.get_y()+bar.get_height()/2, f"{value:.1f}%", va="center", fontsize=8)
     ax.invert_yaxis(); ax.set_xlim(0, max(65, acc.max()*1.18)); ax.set_xlabel("Accuracy (%)")
@@ -353,8 +353,8 @@ def plot_cascade_waterfall(metrics: dict, total_samples: int, output_dir: Path):
     skipped = reasoning.get("cascade_skipped", total_samples - round(total_samples*metrics.get("l1_accuracy", 0)))
     counts = [total_samples, total_samples-skipped]
     counts.append(round(counts[1]*metrics.get("l2_given_l1", 0)))
-    counts.append(round(total_samples*metrics.get("joint_accuracy", 0)))
-    labels = ["All samples", "L1 correct", "L1 + L2 correct", "All levels correct"]
+    counts.append(round(total_samples*metrics.get("l3_accuracy", 0)))
+    labels = ["All samples", "L1 correct", "L1 + L2 correct", "L3 correct"]
     colors = [NAVY, BLUE, ORANGE, PURPLE]
     fig, ax = plt.subplots(figsize=(7.7, 4.5))
     bars = ax.bar(range(4), counts, color=colors, width=.6, zorder=2)

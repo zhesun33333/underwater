@@ -18,6 +18,9 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from testsite.core.dataset_record import validate_gt
+
 PROCESSED_ROOT = Path("processed_audio")
 
 # L3 class display names
@@ -33,7 +36,8 @@ L3_NAMES = {
 def build_output_record(entry: tuple, rank: int, pool_size: int,
                         candidate_pool_size: int) -> dict:
     item, quality, gt, meta_out = entry
-    output_meta = dict(meta_out)
+    output_meta = dict(item.get("_meta", {}))
+    output_meta.update(meta_out)
     output_meta.update({
         "quality_score": float(quality),
         "quality_rank_within_l3": rank,
@@ -177,16 +181,28 @@ def main():
                 continue
             total += 1
 
-            meta = find_meta(PROCESSED_ROOT, arel, sid)
-            if meta is None:
-                skipped_no_meta += 1
-                continue
-
-            try:
-                cat, l3, quality, gt, meta_out = extract_quality_and_gt(meta)
-            except (ValueError, ZeroDivisionError, TypeError) as e:
-                skipped_no_meta += 1
-                continue
+            if "_gt" in item:
+                gt = validate_gt(item["_gt"], sid)
+                l3 = gt["L3"]
+                cat = "radiated_noise" if gt["L1"] == "passive" else gt["L2"]
+                meta_out = dict(item.get("_meta", {}))
+                field = "snr_db" if gt["L1"] == "passive" else "tl_db"
+                if meta_out.get(field) is None:
+                    raise ValueError(f"{sid}: embedded metadata lacks {field} needed for selection")
+                quality = float(meta_out[field])
+                import math
+                if not math.isfinite(quality):
+                    raise ValueError(f"{sid}: non-finite selection statistic")
+            else:
+                meta = find_meta(PROCESSED_ROOT, arel, sid)
+                if meta is None:
+                    skipped_no_meta += 1
+                    continue
+                try:
+                    cat, l3, quality, gt, meta_out = extract_quality_and_gt(meta)
+                except (ValueError, ZeroDivisionError, TypeError):
+                    skipped_no_meta += 1
+                    continue
             if l3 == "unknown" or gt.get("L1") == "unknown":
                 skipped_no_meta += 1
                 continue

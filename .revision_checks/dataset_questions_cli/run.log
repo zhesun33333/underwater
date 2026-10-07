@@ -1,0 +1,35 @@
+============================================================
+  Underwater Acoustic LLM ¡ª Hierarchical Classification
+============================================================
+
+Loading test data: .revision_checks\dataset_questions_cli\samples.jsonl
+  Loaded 4 samples
+
+============================================================
+  Multi-Turn Evaluation
+============================================================
+  T1 L1 Accuracy:     100.00%
+  T2 L2 Accuracy:     0.00%
+  T2 L3 Accuracy:     0.00%
+  L3 Macro F1:        0.0000
+  Joint (all 3 correct): 0.00%
+  L2|L1:              0.00%
+  L3|L2:              0.00%
+
+
+  T3 Alignment:       25.00%
+  T3 Contradiction:   75.00%
+  Concept Confusion:   75.00%
+  Vague / Generic:     0.00%
+  Term Stacking:       0.00%
+
+============================================================
+  Generating Report
+============================================================
+
+============================================================
+  Evaluation Complete
+  L3 Accuracy: 0.00%
+  Joint:       0.00%
+  Report:      .revision_checks\dataset_questions_cli\output/
+============================================================

@@ -44,23 +44,26 @@ class MultiTurnEvaluator:
         self.inference = inference
         self.parser = OutputParser(config)
         self.scorer = Scorer(config)
-        self.prompts = config["prompts"]["three_turn"]
         self.batch_size = max(1, int(config.get("model", {}).get("batch_size", 1)))
 
     def evaluate(
         self, samples: List[EvalSample]
     ) -> Tuple[HierarchicalMetrics, ReasoningMetrics, List[TurnResult]]:
         results: List[TurnResult] = []
-        import random
-        rng = random.Random(42)
+        ids = [sample.sample_id for sample in samples]
+        if len(ids) != len(set(ids)):
+            raise ValueError("duplicate sample IDs passed to evaluator")
+        for sample in samples:
+            sample.validate_questions()
 
         cascade_count = 0
 
         for start in range(0, len(samples), self.batch_size):
             chunk = samples[start:start + self.batch_size]
-            q1s = [rng.choice(self.prompts["turn1"]) for _ in chunk]
+            q1s = [s.questions[0] for s in chunk]
             a1s = self.inference.generate_batch(
                 [s.audio_path for s in chunk], q1s)
+            self._check_answers(a1s, len(chunk), "Turn 1")
             states = []
             eligible = []
             for i, (sample, q1, a1) in enumerate(zip(chunk, q1s, a1s)):
@@ -70,10 +73,7 @@ class MultiTurnEvaluator:
                              t1_correct=ok)
                 states.append(state)
                 if ok:
-                    templates = (self.prompts["turn2_active"] if pred1.L1 == "active"
-                                 else self.prompts["turn2_passive"])
-                    q2 = rng.choice(templates).replace(
-                        "{L1}", self._l1_display_name(pred1.L1))
+                    q2 = sample.questions[1]
                     history2 = [
                         {"from": "human", "value": q1},
                         {"from": "gpt", "value": a1},
@@ -86,6 +86,7 @@ class MultiTurnEvaluator:
                 a2s = self.inference.chat_batch(
                     [x["sample"].audio_path for x in eligible],
                     [x["history2"] for x in eligible])
+                self._check_answers(a2s, len(eligible), "Turn 2")
                 histories3 = []
                 for state, a2 in zip(eligible, a2s):
                     pred2 = self.parser.parse(
@@ -95,10 +96,11 @@ class MultiTurnEvaluator:
                                              and pred2.L3 == state["sample"].gt["L3"]))
                     histories3.append(state["history2"] + [
                         {"from": "gpt", "value": a2},
-                        {"from": "human", "value": self.prompts["turn3"]},
+                        {"from": "human", "value": state["sample"].questions[2]},
                     ])
                 a3s = self.inference.chat_batch(
                     [x["sample"].audio_path for x in eligible], histories3)
+                self._check_answers(a3s, len(eligible), "Turn 3")
                 for state, a3 in zip(eligible, a3s):
                     state["a3"] = a3
 
@@ -116,10 +118,12 @@ class MultiTurnEvaluator:
                     turn1_correct=state["t1_correct"], turn2_prompt=state["q2"],
                     turn2_output=state["a2"], turn2_pred=state["pred2"],
                     turn2_correct=state["t2_correct"],
-                    turn3_prompt=self.prompts["turn3"] if state["t1_correct"] else "",
+                    turn3_prompt=state["sample"].questions[2] if state["t1_correct"] else "",
                     turn3_output=state["a3"],
                     cascade_skipped=not state["t1_correct"]))
 
+        if [r.sample.sample_id for r in results] != ids:
+            raise ValueError("evaluation result IDs/count do not match input samples")
         n = len(results)
         gts = [r.sample.gt for r in results]
 
@@ -149,11 +153,6 @@ class MultiTurnEvaluator:
         l2_l3_c = sum(
             r.turn2_pred.L2 == g["L2"] and r.turn2_pred.L3 == g["L3"]
             for r, g in zip(results, gts))
-        all3_c = sum(
-            r.turn1_pred.L1 == g["L1"]
-            and r.turn2_pred.L2 == g["L2"]
-            and r.turn2_pred.L3 == g["L3"]
-            for r, g in zip(results, gts))
 
         # Parse tier 分布
         tiers: Dict[int, int] = {}
@@ -168,7 +167,6 @@ class MultiTurnEvaluator:
             l3=l3_metrics,
             l2_given_l1=l1_l2_c / l1_c if l1_c > 0 else 0.0,
             l3_given_l2=l2_l3_c / l2_c if l2_c > 0 else 0.0,
-            joint_accuracy=all3_c / n if n > 0 else 0.0,
             parse_tier_dist=tiers,
         )
 
@@ -184,9 +182,17 @@ class MultiTurnEvaluator:
 
         return hierarchical, reasoning, results
 
+    @staticmethod
+    def _check_answers(answers, expected, turn):
+        if not isinstance(answers, (list, tuple)) or len(answers) != expected:
+            actual = len(answers) if isinstance(answers, (list, tuple)) else type(answers).__name__
+            raise ValueError(f"{turn}: backend returned {actual} answers; expected {expected}")
+        if any(not isinstance(answer, str) for answer in answers):
+            raise ValueError(f"{turn}: backend answers must be strings")
+
     def _l1_display_name(self, l1_key: str) -> str:
         if l1_key == "active":
             return "actively transmitted"
         elif l1_key == "passive":
-            return "passively received"
+            return "source-radiated"
         return "unidentified"

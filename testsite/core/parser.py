@@ -1,17 +1,8 @@
-"""
-输出解析器 — 从模型自然语言中提取 L1/L2/L3 分类标签。
+"""Strict letter-only classification parsing.
 
-两轮回退策略:
-  Tier 1: alias 直接匹配 → 在输出文本中搜索 taxonomy 中定义的别名
-  Tier 2: 宽松匹配 (去除非字母数字) → 处理标点变体
-  Tier 3: 失败 → "unknown"
-
-模型输出是自然对话 (两轮 QA), 不是 【】 定界符格式,
-解析基于 taxonomy config 中的 aliases 做关键词匹配。
-
-选项解析:
-  resolve_short_answer() 处理模型只输出选项字母 (如 "A") 的情况,
-  利用 prompt 中的选项定义将字母映射回完整选项文本。
+Model responses must contain exactly one displayed uppercase option letter.
+Aliases are used only to decode trusted option text, never model prose.
+Invalid responses produce unknown labels and parse_status=invalid_format.
 """
 
 import re
@@ -25,57 +16,16 @@ from .scorer import HierPrediction
 # ============================================================
 
 def resolve_short_answer(output: str, prompt: str) -> str:
-    """如果模型只输出了选项字母/数字, 用 prompt 中的选项映射还原。
+    """Resolve one uppercase option letter; reject all other response forms.
 
-    例如 prompt 中有 "A. 主动信号", 模型输出 "A" 或 "A.",
-    则返回 "主动信号" 供 parser 做 alias 匹配。
+    Only surrounding whitespace is ignored. An empty result means invalid
+    format or an option that is absent from the supplied question.
     """
-    output = output.strip()
-
-    # 如果输出已经足够长 (> 8 字符), 很可能已经包含 alias, 直接返回
-    if len(output) > 8:
-        return output
-
-    # 从 prompt 提取选项映射: "A. 主动信号" → {"a": "主动信号"}
-    option_map: Dict[str, str] = {}
-
-    # 字母选项: A. / A) / A、/ A  后跟选项文本
-    for m in re.finditer(
-        r'(?:^|\n)\s*([A-Za-z]+)\s*[\.\)\、\s]\s*(.+?)(?:\n|$)',
-        prompt, re.MULTILINE
-    ):
-        letter = m.group(1).strip().lower()
-        text = m.group(2).strip().rstrip('，,。.')
-        if letter and text and len(letter) <= 2:
-            option_map[letter] = text
-
-    # 数字选项: 1. / 1) / 1、 后跟选项文本
-    for m in re.finditer(
-        r'(?:^|\n)\s*(\d+)\s*[\.\)\、\s]\s*(.+?)(?:\n|$)',
-        prompt, re.MULTILINE
-    ):
-        num = m.group(1).strip()
-        text = m.group(2).strip().rstrip('，,。.')
-        if num and text:
-            option_map[num] = text
-
-    if not option_map:
-        return output
-
-    # 清洗输出: 去掉句号和空白, 尝试精确匹配
-    output_clean = output.rstrip('.。,，)）').strip().lower()
-
-    if output_clean in option_map:
-        return option_map[output_clean]
-
-    # 兜底: 从短输出中提取首个大写字母 ("选A" → "A")
-    letter_match = re.search(r'[A-Za-z]', output)
-    if letter_match:
-        letter = letter_match.group(0).lower()
-        if letter in option_map:
-            return option_map[letter]
-
-    return output
+    answer = output.strip()
+    if not re.fullmatch(r"[A-Z]", answer):
+        return ""
+    options = dict(re.findall(r"^\s*([A-Z])\. +([^\r\n]+)", prompt, re.MULTILINE))
+    return options.get(answer, "")
 
 
 class OutputParser:
@@ -111,9 +61,8 @@ class OutputParser:
             prompt: 发送给模型的 prompt (用于解析选项字母)
         """
         # 选项解析: 如果模型只输出 "A" 这样的短标识符, 还原为完整文本
-        if prompt:
-            model_output = resolve_short_answer(model_output, prompt)
-        text = model_output.strip()
+        original_output = model_output
+        text = resolve_short_answer(model_output, prompt)
 
         l1, l1_tier = self._extract(text, self.l1_map)
         l2, l2_tier = self._extract(text, self.l2_map)
@@ -125,21 +74,22 @@ class OutputParser:
             sample_id=sample_id,
             L1=l1, L2=l2, L3=l3,
             parse_tier=parse_tier,
-            raw_output=text,
+            raw_output=original_output,
+            parse_status="valid_option" if text else "invalid_format",
         )
 
     def parse_turn1(self, sample_id: str, output: str,
                     prompt: str = "") -> HierPrediction:
         """Turn1 输出 — 仅提取 L1 (避免浪费 L2/L3 提取)。"""
-        if prompt:
-            output = resolve_short_answer(output, prompt)
-        text = output.strip()
+        original_output = output
+        text = resolve_short_answer(output, prompt)
         l1, l1_tier = self._extract(text, self.l1_map)
         return HierPrediction(
             sample_id=sample_id,
             L1=l1, L2="unknown", L3="unknown",
             parse_tier=l1_tier,
-            raw_output=text,
+            raw_output=original_output,
+            parse_status="valid_option" if text else "invalid_format",
         )
 
     # ============================================================

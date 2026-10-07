@@ -80,7 +80,7 @@ def extract_labels(meta: dict) -> Dict[str, str]:
         l1 = "actively transmitted"
         l2 = "detection pulse" if signal_category == "pulse" else "communication signal"
     elif signal_category == "radiated_noise":
-        l1 = "passively received"
+        l1 = "source-radiated"
         l2 = "ship-radiated noise"
     else:
         l1 = "unknown"

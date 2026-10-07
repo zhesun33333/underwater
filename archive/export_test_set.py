@@ -19,9 +19,27 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from datetime import datetime
 
 PROCESSED_ROOT = Path("processed_audio")
 AUDIO_EXT = ".wav"
+
+
+def create_export_directory(base):
+    """Reserve a new timestamped directory without deleting existing exports."""
+    base = Path(base)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    for suffix in range(1000):
+        name = f"{base.name}_{stamp}" + (f"_{suffix}" if suffix else "")
+        target = base.with_name(name)
+        if target.with_suffix(target.suffix + ".tar").exists() or Path(str(target) + ".tar.gz").exists():
+            continue
+        try:
+            target.mkdir(parents=True, exist_ok=False)
+            return target
+        except FileExistsError:
+            continue
+    raise FileExistsError("could not reserve a fresh export directory")
 
 
 def main():
@@ -37,15 +55,14 @@ def main():
         print(f"错误: {args.input} 不存在, 请先运行 filter_test_set.py")
         return 1
 
-    out_dir = Path(args.output)
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True)
+    out_dir = create_export_directory(args.output)
+    print(f"New export directory: {out_dir.resolve()}")
 
     # ---- 第一遍: 收集所有 WAV 文件, 重写 JSONL 路径 ----
     audio_dir = out_dir / "audio"
     records = []
     missing = 0
+    seen_ids = set()
 
     with open(jsonl_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -53,25 +70,32 @@ def main():
             if not line:
                 continue
             item = json.loads(line)
+            sid = item.get("id")
+            if not isinstance(sid, str) or not sid.strip() or sid in seen_ids:
+                raise ValueError(f"missing or duplicate sample ID in export: {sid!r}")
+            seen_ids.add(sid)
             arel = item.get("audio", "")
             if not arel:
-                continue
+                raise ValueError(f"{sid}: missing audio path")
 
-            wav_src = PROCESSED_ROOT / arel
-            if not wav_src.exists():
-                print(f"  [WARN] WAV 缺失: {arel}")
-                missing += 1
-                continue
-
-            # 重写 audio 路径: 相对于 out_dir (testset_export)
-            item["audio"] = str(Path("audio") / arel)
+            wav_src = (PROCESSED_ROOT / arel).resolve()
+            try:
+                relative = wav_src.relative_to(PROCESSED_ROOT.resolve())
+            except ValueError as error:
+                raise ValueError(f"{sid}: audio path is outside processed_audio: {arel}") from error
+            if not wav_src.is_file():
+                raise FileNotFoundError(f"{sid}: missing WAV: {wav_src}; export aborted")
+            item["audio"] = (Path("audio") / relative).as_posix()
             records.append((item, wav_src))
 
     # ---- 第二遍: 复制 WAV ----
     print(f"共 {len(records)} 个样本, 开始复制 WAV ...")
 
+    if not records:
+        raise ValueError("empty export; no archive created")
+
     for i, (item, wav_src) in enumerate(records):
-        wav_dst = audio_dir / wav_src.relative_to(PROCESSED_ROOT)
+        wav_dst = audio_dir / wav_src.relative_to(PROCESSED_ROOT.resolve())
         wav_dst.parent.mkdir(parents=True, exist_ok=True)
         if not wav_dst.exists():
             shutil.copy2(wav_src, wav_dst)

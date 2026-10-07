@@ -157,7 +157,6 @@
 | 指标 | 含义 |
 |------|------|
 | **Coarse Accuracy** | 粗分类对几条 |
-| **Fine Joint Accuracy** | 粗分类对 + 该信号所有细分类参数全对 |
 | **Fine-given-Coarse Acc** | 粗分类对了的前提下，细分类全对的比例 |
 
 ### 4.4 消融指标

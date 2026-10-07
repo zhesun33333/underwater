@@ -5,16 +5,20 @@ from pathlib import Path
 
 from testsite.config import load_config
 from testsite.core.scorer import Scorer
+from testsite.core.integrity import validate_predictions
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--manifest", required=True, help="Original complete evaluation JSONL")
     args = parser.parse_args()
     rows = [json.loads(x) for x in Path(args.input).read_text(encoding="utf-8").splitlines() if x]
     if not rows:
         raise SystemExit("no predictions found")
+    manifest_hash = validate_predictions(rows, args.manifest)
+    print(f"[Integrity] verified {len(rows)} unique predictions against {args.manifest}")
     scorer = Scorer(load_config())
     gts = [x["gt"] for x in rows]
     l1p = [x["turn1_pred"] for x in rows]
@@ -37,12 +41,13 @@ def main():
     )
     reasoning.cascade_skipped = len(rows) - len(reasoning_rows)
     payload = {
+        "manifest_sha256": manifest_hash, "run_signature": rows[0]["run_signature"],
+        "integrity_verified": True,
         "total_samples": len(rows), "l1_accuracy": l1.accuracy,
         "l2_accuracy": l2.accuracy, "l3_accuracy": l3.accuracy,
         "l3_macro_f1": l3.macro_f1,
         "l2_given_l1": sum(a and b for a, b in zip(l1_ok, l2_ok)) / max(1, sum(l1_ok)),
         "l3_given_l2": sum(a and b for a, b in zip(l2_ok, l3_ok)) / max(1, sum(l2_ok)),
-        "joint_accuracy": sum(a and b and c for a, b, c in zip(l1_ok, l2_ok, l3_ok)) / len(rows),
         "parse_tier_dist": tiers, "l3_per_class": l3.per_class,
         "l3_confusion_matrix": l3.confusion_matrix,
         "l3_confusion_labels": l3.confusion_labels,

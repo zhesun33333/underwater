@@ -1,8 +1,8 @@
 """
 Underwater acoustic LLM data synthesis — Step 2: QA pair generation (Ship)
 Generates 3-turn SFT data:
-  Turn 1: Active/passive discrimination → short answer
-  Turn 2: Noise source specific type → long answer
+  Turn 1: Source-based Active/Passive classification → short answer
+  Turn 2: Noise source specific type → option letter
   Turn 3: Reasoning rationale → qualitative reasoning text
 Supports train/val/test split (70/15/15, unified 3-turn format)
 Usage:
@@ -26,17 +26,11 @@ from utils.split_utils import stratified_group_split
 # ============================================================
 # 模板定义
 # ============================================================
-# Turn 1 — Active/passive discrimination
-T1_TEMPLATES = [
-    "Determine whether this underwater acoustic signal is actively transmitted or passively received.\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
-    "Is the signal in this audio deliberately transmitted, or received through passive listening?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
-    "First, the most basic question: is this signal active or passive?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
-    "Classify the active/passive nature of this underwater acoustic signal.\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
-    "Is this acoustic signal artificially transmitted, or radiated by the target itself?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
-    "From an active detection vs. passive listening perspective, which category does this signal belong to?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
-    "Identify the signal source: deliberately transmitted, or radiated noise received passively?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
-    "Make a fundamental judgment: is this underwater acoustic signal active or passive?\nOptions:\nA. Actively transmitted signal\nB. Passively received signal",
-]
+# Turn 1 — Source-based Active/Passive classification
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from testsite.core.dataset_record import build_record_fields, resolve_source_audio
+from testsite.core.source_label_prompts import QA_PROMPT_VERSION, T1_TEMPLATES, get_t1_answer, OPTION_ONLY_INSTRUCTION
+
 # Ship 专用 Turn 2 — 问噪声源类型，不透露子类
 _T2_SHIP_OPTIONS = (
     "A. Passive — Ship-radiated noise — Cargo vessel\n"
@@ -53,8 +47,9 @@ T2_TEMPLATES = [
     f"Understood. What type of target is this radiated noise most likely from?\nOptions:\n{_T2_SHIP_OPTIONS}",
     f"OK. Further classify the noise source of this {{L1}} signal.\nOptions:\n{_T2_SHIP_OPTIONS}",
 ]
+T2_TEMPLATES = [q + "\n" + OPTION_ONLY_INSTRUCTION for q in T2_TEMPLATES]
 # Turn 3 — Reasoning
-T3_PROMPT = "Please briefly explain your reasoning."
+T3_PROMPT = "Briefly explain your previous classification using acoustic cues you can identify in the audio. Focus on the observed cues and how they support your choice. Do not list, compare, or rule out alternative classes, and do not merely repeat the class name or its definition. If the acoustic evidence is insufficient, state this explicitly rather than inventing supporting details."
 # ============================================================
 # 答案生成 — 选项字母格式 (方案 A)
 # ============================================================
@@ -68,17 +63,12 @@ _T2_PASSIVE_FULL = {
     "underwater_target": "E. Passive — Ship-radiated noise — Underwater vehicle",
 }
 
-def get_t1_answer(l1: str) -> str:
-    """Turn 1 答案: 完整选项文本。"""
-    return "A. Actively transmitted signal" if l1 == "actively transmitted" else "B. Passively received signal"
-
-
 def build_turn2_answer(labels: Dict[str, str]) -> str:
-    """Turn 2 答案: 完整选项文本 (A-E for passive)。"""
+    """Turn 2 答案: 单个大写选项字母 (A-E for passive)。"""
     l3 = labels["L3"]
     if l3 not in _T2_PASSIVE_FULL:
         raise ValueError(f"unsupported Ship L3 label: {l3!r}")
-    return _T2_PASSIVE_FULL[l3]
+    return _T2_PASSIVE_FULL[l3][0]
 
 
 def build_turn3_answer(labels: Dict[str, str], meta: Dict, rng: random.Random) -> str:
@@ -91,7 +81,7 @@ def build_turn3_answer(labels: Dict[str, str], meta: Dict, rng: random.Random) -
 # L1/L2/L3 术语从 shared_terminology.py 统一导入 (single source of truth)
 # ============================================================
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from shared_terminology import (
+from testsite.core.shared_terminology import (
     L1_PASSIVE_TERMS as _L1_PASSIVE_TERMS,
     L2_PASSIVE_TERMS as _L2_PASSIVE_TERMS,
     build_l3_evidence,
@@ -183,25 +173,15 @@ def process_single_json(
     if labels["L1"] == "unknown":
         return None
     sample_id = get_id(meta)
-    wav_rel = get_wav_path(meta)
-    wav_path = processed_root / wav_rel
-    if not wav_path.exists():
-        candidates = list(processed_root.rglob(f"{sample_id}.wav"))
-        if candidates:
-            wav_path = candidates[0]
-            wav_rel = str(wav_path.relative_to(processed_root))
-        else:
-            return None
+    sample_id = get_id(meta)
+    wav_rel = resolve_source_audio(meta, processed_root)
     conversations = build_conversations(labels, meta, rng)
     return {
         "id": sample_id,
         "audio": wav_rel,
+        "qa_prompt_version": QA_PROMPT_VERSION,
         "conversations": conversations,
-        "_meta": {
-            "L1": labels["L1"],
-            "L2": labels["L2"],
-            "L3": labels["L3"],
-        },
+        **build_record_fields(labels, meta, sample_id),
     }
 # ============================================================
 # 入口
@@ -268,8 +248,7 @@ def main():
                 )
                 if record is None:
                     continue
-                out_record = {k: v for k, v in record.items() if k != "_meta"}
-                fout.write(json.dumps(out_record, ensure_ascii=False) + "\n")
+                fout.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
                 ok += 1
         total_ok += ok
         print(f"  [{split_name}] {ok}/{len(split_files)} → {output_path.name}")

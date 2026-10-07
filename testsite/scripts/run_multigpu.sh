@@ -13,6 +13,9 @@ IFS=',' read -r -a gpus <<< "$gpu_list"
 workers="${#gpus[@]}"
 
 mkdir -p "$output_root"
+output_root="$(mktemp -d "$output_root/run_$(date +%Y%m%d_%H%M%S)_XXXXXX")"
+echo "Fresh run directory: $output_root"
+run_id="$(python -c 'import uuid; print(uuid.uuid4().hex)')"
 pids=()
 for shard in "${!gpus[@]}"; do
   gpu="${gpus[$shard]}"
@@ -21,7 +24,7 @@ for shard in "${!gpus[@]}"; do
     --data "$data" --audio-root "$audio_root" \
     --backend "$backend" --model-id "$model_path" \
     --device cuda:0 --batch-size "$batch" --attn-implementation sdpa \
-    --num-shards "$workers" --shard-index "$shard" \
+    --num-shards "$workers" --shard-index "$shard" --run-id "$run_id" \
     --output-dir "$output_root/shard_$shard" &
   pids+=("$!")
 done
@@ -36,10 +39,12 @@ if (( failed )); then
 fi
 
 mkdir -p "$output_root/merged"
-python - "$output_root" <<'PY'
-import glob, json, os, sys
+python - "$output_root" "$workers" "$data" <<'PY'
+import json, os, sys
+from testsite.core.integrity import validate_predictions
 root = sys.argv[1]
-paths = sorted(glob.glob(os.path.join(root, "shard_*", "predictions_shard_*.jsonl")))
+paths = [os.path.join(root, f"shard_{i}", f"predictions_shard_{i:03d}.jsonl")
+         for i in range(int(sys.argv[2]))]
 records = []
 for path in paths:
     with open(path, encoding="utf-8") as f:
@@ -47,6 +52,7 @@ for path in paths:
 ids = [x["sample_id"] for x in records]
 if len(ids) != len(set(ids)):
     raise SystemExit("duplicate sample IDs found while merging")
+validate_predictions(records, sys.argv[3])
 records.sort(key=lambda x: x["sample_id"])
 out = os.path.join(root, "merged", "predictions.jsonl")
 with open(out, "w", encoding="utf-8") as f:
@@ -56,4 +62,5 @@ print(f"Merged {len(records)} unique predictions -> {out}")
 PY
 python -m testsite.scripts.merge_predictions \
   --input "$output_root/merged/predictions.jsonl" \
-  --output "$output_root/merged/metrics.json"
+  --output "$output_root/merged/metrics.json" \
+  --manifest "$data"

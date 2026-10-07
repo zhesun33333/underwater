@@ -890,7 +890,7 @@ class KimiAudioBackend(_BaseAudioBackend):
 class MockModel:
     """模拟模型，用于测试评估框架。"""
 
-    L1_MAP = {"active": "an actively transmitted signal", "passive": "a passively received signal"}
+    L1_MAP = {"active": "an actively transmitted signal", "passive": "a source-radiated signal"}
     L2_MAP = {"pulse": "Detection pulse", "communication": "Communication signal", "ship_noise": "Ship-radiated noise"}
     L3_MAP = {
         "CW": "CW (Continuous Wave)", "LFM": "LFM (Linear Frequency Modulation)",
