@@ -54,7 +54,8 @@ _NAME_TO_SHORT = {
     "Cruise ship": "cruise", "邮轮": "cruise",
     "Fishing vessel": "fishing", "渔船": "fishing",
     "Naval vessel": "warship", "军舰": "warship",
-    "Underwater target": "underwater_target", "水下目标": "underwater_target",
+    "Underwater vehicle": "underwater_target", "Underwater target": "underwater_target",
+    "水下目标": "underwater_target",
 }
 
 OUTPUT_FORMATS = ("png", "pdf")

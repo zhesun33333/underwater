@@ -1,0 +1,8 @@
+config.local.json
+cache/
+figures/data/*.pdf
+figures/data/*.png
+figures/data/*.json
+figures/data/*.json.gz
+figures/data/tavottofile/
+figures/data/.tavotto*

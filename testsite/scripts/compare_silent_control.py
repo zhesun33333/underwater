@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from testsite.core.integrity import file_sha256, read_manifest
+from testsite.core.statistics import (DEFAULT_REPLICATES, DEFAULT_SEED, summarise)
 from testsite.scripts.generate_silent_control import new_directory
 from testsite.scripts.merge_predictions import aggregate
 
@@ -13,7 +14,8 @@ def read_rows(path):
 
 
 def compare(control_dir, original_predictions, silent_predictions,
-            original_protocols, silent_protocols, output_prefix):
+            original_protocols, silent_protocols, output_prefix,
+            replicates=DEFAULT_REPLICATES, seed=DEFAULT_SEED):
     control = Path(control_dir).resolve()
     generation = json.loads((control / 'generation.json').read_text(encoding='utf-8'))
     if generation.get('status') != 'complete':
@@ -63,8 +65,12 @@ def compare(control_dir, original_predictions, silent_predictions,
                        'silent': {'L1': b['turn1_pred'], 'L2': b['turn2_pred']['L2'], 'L3': b['turn2_pred']['L3']},
                        'original_l3_correct': a['turn2_pred']['L3'] == a['gt']['L3'],
                        'silent_l3_correct': b['turn2_pred']['L3'] == b['gt']['L3']})
+    intervals = summarise(
+        paired, [c['key'] for c in identity_a['taxonomy']['L3']['classes']],
+        replicates=replicates, seed=seed)
     result = {'status': 'complete', 'comparison': 'original_minus_silent',
               'original': metrics_a, 'silent': metrics_b, 'delta': deltas,
+              'confidence_intervals': intervals,
               'accuracy_delta_percentage_points': {k: 100*deltas[k] for k in keys if k.endswith('_accuracy')},
               'counts': {'original': counts(rows_a), 'silent': counts(rows_b)},
               'inputs': {str(Path(p).resolve()): file_sha256(p) for p in
@@ -77,7 +83,36 @@ def compare(control_dir, original_predictions, silent_predictions,
              'All values below use a 0–1 scale. Delta = original − silent.', '',
              '| Metric | Original | Silent | Delta |', '|---|---:|---:|---:|']
     lines += [f'| {k} | {metrics_a[k]:.6f} | {metrics_b[k]:.6f} | {deltas[k]:+.6f} |' for k in keys]
-    lines += ['', result['note'], '', 'Execution/invalid-format counts:', '',
+    lines += ['', result['note'], '', '## Confidence intervals (95%)', '',
+              f"Resampling unit: {intervals['method']['resampling_unit']}.",
+              f"Replicates: {intervals['method']['replicates']}, seed: {intervals['method']['seed']}, "
+              f"RNG: {intervals['method']['rng']}.",
+              f"Clusters: {intervals['sample_structure']['clusters']} for "
+              f"{intervals['sample_structure']['samples']} samples "
+              f"(max cluster size {intervals['sample_structure']['max_cluster_size']}).", '',
+              '| Quantity | Condition | Estimate | 95% CI |', '|---|---|---:|---|']
+    for group, label in (('accuracy', 'L3 accuracy'), ('macro_f1', 'Macro F1')):
+        for condition, name in (('original', 'Original'), ('silent', 'Silent'),
+                                ('delta', 'Delta (original − silent)')):
+            cell = intervals[group][condition]
+            lines.append(f"| {label} | {name} | {cell['estimate']:.6f} | "
+                         f"[{cell['ci95'][0]:.6f}, {cell['ci95'][1]:.6f}] |")
+    lines += ['', 'Cross-checks that do not depend on the random seed:', '',
+              f"| Quantity | Condition | 95% CI |", '|---|---|---|',
+              f"| L3 accuracy (Wilson, closed form) | Original | "
+              f"[{intervals['accuracy']['original']['wilson_ci95'][0]:.6f}, "
+              f"{intervals['accuracy']['original']['wilson_ci95'][1]:.6f}] |",
+              f"| L3 accuracy (Wilson, closed form) | Silent | "
+              f"[{intervals['accuracy']['silent']['wilson_ci95'][0]:.6f}, "
+              f"{intervals['accuracy']['silent']['wilson_ci95'][1]:.6f}] |",
+              f"| L3 accuracy delta (paired, analytic) | Delta | "
+              f"[{intervals['accuracy']['delta']['analytic_ci95'][0]:.6f}, "
+              f"{intervals['accuracy']['delta']['analytic_ci95'][1]:.6f}] |", '',
+              f"Discordant pairs (McNemar): original-only correct "
+              f"{intervals['accuracy']['delta']['discordant_pairs']['original_only']}, "
+              f"silent-only correct {intervals['accuracy']['delta']['discordant_pairs']['silent_only']}.",
+              '', intervals['note'], '',
+              'Execution/invalid-format counts:', '',
               '```json', json.dumps(result['counts'], indent=2), '```']
     (output / 'comparison.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')
     return output
@@ -91,9 +126,14 @@ def main():
     parser.add_argument('--original-protocol', nargs='+', required=True)
     parser.add_argument('--silent-protocol', nargs='+', required=True)
     parser.add_argument('--output-prefix', default='silent_comparison')
+    parser.add_argument('--replicates', type=int, default=DEFAULT_REPLICATES,
+                        help='Cluster bootstrap replicates for interval estimates')
+    parser.add_argument('--seed', type=int, default=DEFAULT_SEED,
+                        help='Bootstrap seed (recorded in the output for auditability)')
     args = parser.parse_args()
     print(compare(args.control_dir, args.original_predictions, args.silent_predictions,
-                  args.original_protocol, args.silent_protocol, args.output_prefix))
+                  args.original_protocol, args.silent_protocol, args.output_prefix,
+                  replicates=args.replicates, seed=args.seed))
 
 
 if __name__ == '__main__':

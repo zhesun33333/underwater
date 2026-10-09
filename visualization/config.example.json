@@ -1,0 +1,15 @@
+{
+  "full_manifest": "C:/sz_data/dataset_v2/sft_test.jsonl",
+  "eval_manifest": "C:/sz_data/testset_export/sft_test_highquality.jsonl",
+  "eval_audio_root": "C:/sz_data/testset_export",
+  "full_header_index": "cache/full_test_wav_headers.jsonl",
+  "cache_dir": "cache",
+  "expected_full_count": 56221,
+  "expected_eval_per_class": 200,
+  "style": {
+    "width_mm": 180,
+    "font_family": "Times New Roman",
+    "font_size_pt": 9,
+    "legend_frame": false
+  }
+}

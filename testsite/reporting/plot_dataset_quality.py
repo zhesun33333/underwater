@@ -40,11 +40,13 @@ from scipy.signal import stft
 import soundfile as sf
 
 try:
+    from .figure_data import (extract_signal_frequency, load_figure_records, robust_medoid_index)
     from .plot_style import (
         BLUE, ORANGE, TEAL, apply_publication_style,
         save_figure, style_axis,
     )
 except ImportError:  # Allow direct execution from testsite/reporting.
+    from figure_data import (extract_signal_frequency, load_figure_records, robust_medoid_index)
     from plot_style import (  # type: ignore
         BLUE, ORANGE, TEAL, apply_publication_style,
         save_figure, style_axis,
@@ -59,7 +61,7 @@ DISPLAY = {
     "CW": "CW", "LFM": "LFM", "HFM": "HFM", "2FSK": "2FSK",
     "4FSK": "4FSK", "BPSK": "BPSK", "QPSK": "QPSK", "OFDM": "OFDM",
     "cargo": "Cargo", "cruise": "Cruise", "fishing": "Fishing",
-    "warship": "Warship", "underwater_target": "Underwater Target",
+    "warship": "Warship", "underwater_target": "Underwater vehicle",
 }
 GROUPS = {
     "Pulse": ORDER[:3],
@@ -148,79 +150,28 @@ def _load_full_metadata(metadata_root: Path | None, audio_rel: str, sample_id: s
 
 
 def _extract_frequency(meta: dict[str, Any]) -> float | None:
-    # Prefer the representative frequency that was actually passed to BELLHOP.
-    # This also covers records whose source frequency was inferred from a band.
-    env_frequency = _number((meta.get("bellhop_env") or {}).get("freq_hz"))
-    if env_frequency is not None and env_frequency > 0:
-        return env_frequency
-
-    params = meta.get("signal_params") or {}
-    for key in ("center_freq_hz", "center_frequency_hz", "carrier_freq_hz", "carrier_frequency_hz"):
-        value = _number(params.get(key))
-        if value is not None and value > 0:
-            return value
-    for low_key, high_key in (
-        ("band_low_hz", "band_high_hz"),
-        ("subband_low_hz", "subband_high_hz"),
-    ):
-        low = _number(params.get(low_key))
-        high = _number(params.get(high_key))
-        if low is not None and high is not None and 0 <= low < high:
-            return (low + high) / 2
-    return None
+    # Compatibility wrapper; signal frequency is distinct from BELLHOP frequency.
+    return extract_signal_frequency(meta)[0]
 
 
 def load_samples(manifest: Path, audio_root: Path, metadata_root: Path | None) -> list[Sample]:
+    rows, provenance = load_figure_records(manifest, audio_root=audio_root, metadata_root=metadata_root)
     samples: list[Sample] = []
-    problems: list[str] = []
-    with manifest.open("r", encoding="utf-8") as source:
-        for line_number, line in enumerate(source, 1):
-            if not line.strip():
-                continue
-            try:
-                record = json.loads(line)
-                sample_id = str(record["id"])
-                audio_rel = str(record["audio"])
-                l1, l2, l3 = _infer_gt(record)
-            except (json.JSONDecodeError, KeyError, ValueError) as exc:
-                problems.append(f"line {line_number}: {exc}")
-                continue
-            audio_path = audio_root / audio_rel
-            if not audio_path.exists():
-                problems.append(f"line {line_number}: missing WAV {audio_path}")
-                continue
-            try:
-                info = sf.info(audio_path)
-            except RuntimeError as exc:
-                problems.append(f"line {line_number}: unreadable WAV {audio_path}: {exc}")
-                continue
-            embedded = record.get("_meta") or {}
-            full_meta = _load_full_metadata(metadata_root, audio_rel, sample_id)
-            output = full_meta.get("bellhop_output") or {}
-            tl_db = _number(embedded.get("tl_db", output.get("tl_db")))
-            snr_db = _number(embedded.get("snr_db", output.get("snr_db")))
-            quality_score = _number(embedded.get("quality_score"))
-            if quality_score is None:
-                quality_score = snr_db if l2 == "ship_noise" else tl_db
-            samples.append(Sample(
-                sample_id=sample_id,
-                audio_path=audio_path,
-                l1=l1,
-                l2=l2,
-                l3=l3,
-                duration_s=float(info.frames / info.samplerate),
-                sample_rate_hz=int(info.samplerate),
-                tl_db=tl_db,
-                snr_db=snr_db,
-                center_frequency_hz=_extract_frequency(full_meta),
-                quality_score=quality_score,
-                quality_metric=embedded.get("quality_metric"),
-                selection_policy=embedded.get("selection_policy"),
-                raw_record=record,
-            ))
-    if problems:
-        preview = "\n".join(problems[:10])
-        raise RuntimeError(f"manifest/audio validation failed ({len(problems)} issue(s)):\n{preview}")
+    with manifest.open(encoding="utf-8-sig") as source:
+        originals = {row["id"]: row for row in (json.loads(line) for line in source if line.strip())}
+    for row in rows:
+        original = originals[row["id"]]
+        original["_figure_provenance"] = provenance
+        original["_figure_record"] = row
+        samples.append(Sample(
+            sample_id=row["id"], audio_path=Path(row["audio_path"]),
+            l1=row["l1"], l2=row["l2"], l3=row["l3"],
+            duration_s=row["duration_s"], sample_rate_hz=row["fs"],
+            tl_db=row["G_h"], snr_db=row["S_src"],
+            center_frequency_hz=row["signal_frequency_hz"],
+            quality_score=row["quality_score"], quality_metric=row["quality_metric"],
+            selection_policy=row["selection_policy"], raw_record=original,
+        ))
     return samples
 
 
@@ -252,6 +203,8 @@ def validate_paper_subset(samples: list[Sample], strict: bool) -> None:
 
 def _robust_medoid(pool: list[Sample], targets: dict[str, float] | None = None) -> Sample:
     """Select a deterministic sample nearest robust-scaled feature targets."""
+    if not pool:
+        raise ValueError("cannot select a representative from an empty class")
     durations = np.asarray([sample.duration_s for sample in pool], dtype=float)
     quality = np.asarray([
         float(sample.quality_score) if sample.quality_score is not None else np.nan
@@ -271,11 +224,9 @@ def _robust_medoid(pool: list[Sample], targets: dict[str, float] | None = None) 
         (targets or {}).get(name, float(np.median(values)))
         for name, values in named_features
     ])
-    scales = np.subtract(*np.percentile(matrix, [75, 25], axis=0))
-    scales[scales == 0] = 1.0
-    distances = np.sqrt(np.square((matrix - medians) / scales).sum(axis=1))
-    ranked = sorted(zip(distances, pool), key=lambda item: (float(item[0]), item[1].sample_id))
-    return ranked[0][1]
+    index = robust_medoid_index(matrix, [sample.sample_id for sample in pool], medians)
+    return pool[index]
+
 
 
 def select_representatives(samples: list[Sample]) -> dict[str, Sample]:
@@ -312,7 +263,9 @@ def _ecdf(ax, values: list[float], color: str, label: str | None = None) -> None
     if len(ordered) == 0:
         return
     y = np.arange(1, len(ordered) + 1) / len(ordered)
-    ax.plot(ordered, y, color=color, linewidth=1.5, label=label)
+    ax.step(np.r_[ordered[0], ordered], np.r_[0.0, y], where="post",
+            color=color, linewidth=1.5, label=label)
+    ax.set_ylim(0, 1)
 
 
 def _style_axis(ax, grid_axis: str = "both") -> None:
@@ -463,8 +416,9 @@ def write_selection_record(path: Path, manifest: Path, audio_root: Path,
                            selected: dict[str, Sample], args: argparse.Namespace) -> None:
     payload = {
         "source_manifest": str(manifest.resolve()),
+        "data_provenance": next(iter(selected.values())).raw_record.get("_figure_provenance"),
         "audio_root": str(audio_root.resolve()),
-        "selection_rule": "minimum robust-scaled distance to class medians of duration, family quality metadata, and active center/carrier frequency; sample_id tie-break",
+        "selection_rule": "minimum IQR-scaled distance to class medians of actual WAV duration, family quality metadata, and source signal center/carrier frequency; zero-IQR dimensions omitted; sample_id tie-break",
         "stft": {"n_fft": args.n_fft, "hop_length": args.hop_length, "window": "hann", "fmin_hz": args.fmin},
         "display": {
             "power_db_floor": args.db_floor,
