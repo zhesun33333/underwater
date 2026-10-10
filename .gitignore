@@ -29,3 +29,4 @@ eval_results/
 # Downloaded datasets and archives (stored on Hugging Face, not in Git)
 dataset/*.jsonl
 /testset_export.tar.gz
+/raw_data/
