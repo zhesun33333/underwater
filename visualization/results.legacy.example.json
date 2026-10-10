@@ -1,0 +1,18 @@
+{
+  "mode": "legacy_preview",
+  "archive": "D:/sz_workplace/temp_files/水生大模型评估结果.zip",
+  "cache_dir": "cache/results_legacy",
+  "diagnostic_model": "qwen2_audio",
+  "runs": [
+    {"id": "qwen2_audio", "label": "Qwen2-Audio", "metrics": "qwen2_audio/eval_metrics_1785276663.json"},
+    {"id": "aero1_audio", "label": "Aero1-Audio", "metrics": "aero1_audio/eval_metrics_1785304689.json"},
+    {"id": "voxtral_mini", "label": "Voxtral-Mini", "metrics": "voxtral_mini/eval_metrics_1785374479.json"},
+    {"id": "af_next", "label": "AF-Next", "metrics": "af_next_3gpu_bs4/merged/metrics.json", "predictions": ["af_next_3gpu_bs4/merged/predictions.jsonl"]},
+    {"id": "gemma4_12b", "label": "Gemma4-12B", "metrics": "gemma4_12b_3gpu_bs8/merged/metrics.json", "predictions": ["gemma4_12b_3gpu_bs8/merged/predictions.jsonl"]},
+    {"id": "gemma4_run1", "label": "Gemma4 (run1)", "metrics": "gemma4_3gpu_bs32_run1/merged/metrics.json", "predictions": ["gemma4_3gpu_bs32_run1/merged/predictions.jsonl"]},
+    {"id": "midashenglm", "label": "MiDaShengLM", "metrics": "midashenglm_3gpu_bs32/merged/metrics.json", "predictions": ["midashenglm_3gpu_bs32/merged/predictions.jsonl"]},
+    {"id": "qwen25_omni", "label": "Qwen2.5-Omni", "metrics": "qwen25_omni_3gpu/merged/metrics.json", "predictions": ["qwen25_omni_3gpu/merged/predictions.jsonl"]},
+    {"id": "voxtral_small", "label": "Voxtral-Small", "metrics": "voxtral_small_4gpu_bs32/merged/metrics.json", "predictions": ["voxtral_small_4gpu_bs32/merged/predictions.jsonl"]}
+  ],
+  "comparisons": []
+}

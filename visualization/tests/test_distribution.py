@@ -114,7 +114,7 @@ class DistributionTests(unittest.TestCase):
         before = copy.deepcopy(mpl.rcParams)
         figure, _ = build_figure(rows, rows, STYLE)
         self.assertEqual(dict(mpl.rcParams), dict(before))
-        np.testing.assert_allclose(figure.get_size_inches() * 25.4, [180, 135])
+        np.testing.assert_allclose(figure.get_size_inches() * 25.4, [180, 110])
         self.assertEqual(len(figure.axes), 4)
         self.assertEqual(figure.axes[0].get_xscale(), "log")
         FigureCanvasAgg(figure).draw()

@@ -1,0 +1,14 @@
+{
+  "mode": "verified",
+  "cache_dir": "cache/results_verified",
+  "diagnostic_model": "qwen2_audio",
+  "runs": [
+    {
+      "id": "qwen2_audio",
+      "label": "Qwen2-Audio",
+      "predictions": ["../testsite/outputs/qwen2_audio/predictions_shard_*.jsonl"],
+      "protocols": ["../testsite/outputs/qwen2_audio/protocol_shard_*.json"]
+    }
+  ],
+  "comparisons": []
+}

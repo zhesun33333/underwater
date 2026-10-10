@@ -1,0 +1,235 @@
+{
+  "mode": "archived_verified",
+  "cache_dir": "cache/results_20261010",
+  "archive_index": "cache/results_20261010_sources/_extraction_manifest.json",
+  "diagnostic_model": "qwen25_omni",
+  "runs": [
+    {
+      "id": "qwen2_audio",
+      "label": "Qwen2-Audio",
+      "predictions": [
+        "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/qwen2_audio/original/run_20261010_014227_5mk2Ru/merged/predictions.jsonl"
+      ],
+      "protocols": [
+        "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/qwen2_audio/original/run_20261010_014227_5mk2Ru/shard_0/protocol_shard_000.json",
+        "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/qwen2_audio/original/run_20261010_014227_5mk2Ru/shard_1/protocol_shard_001.json"
+      ],
+      "metrics": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/qwen2_audio/original/run_20261010_014227_5mk2Ru/merged/metrics.json",
+      "manifest": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/controls_manifests/original.jsonl"
+    },
+    {
+      "id": "aero1_audio",
+      "label": "Aero1-Audio",
+      "predictions": [
+        "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/aero1_audio/original/run_20261010_024632_Uz84GM/merged/predictions.jsonl"
+      ],
+      "protocols": [
+        "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/aero1_audio/original/run_20261010_024632_Uz84GM/shard_0/protocol_shard_000.json",
+        "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/aero1_audio/original/run_20261010_024632_Uz84GM/shard_1/protocol_shard_001.json"
+      ],
+      "metrics": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/aero1_audio/original/run_20261010_024632_Uz84GM/merged/metrics.json",
+      "manifest": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/controls_manifests/original.jsonl"
+    },
+    {
+      "id": "voxtral_mini",
+      "label": "Voxtral-Mini",
+      "predictions": [
+        "cache/results_20261010_sources/instance3/voxtral_mini__run_20261009_223928_TwZzaZ/merged/predictions.jsonl"
+      ],
+      "protocols": [
+        "cache/results_20261010_sources/instance3/voxtral_mini__run_20261009_223928_TwZzaZ/shard_0/protocol_shard_000.json",
+        "cache/results_20261010_sources/instance3/voxtral_mini__run_20261009_223928_TwZzaZ/shard_1/protocol_shard_001.json"
+      ],
+      "metrics": "cache/results_20261010_sources/instance3/voxtral_mini__run_20261009_223928_TwZzaZ/merged/metrics.json"
+    },
+    {
+      "id": "af_next",
+      "label": "AF-Next",
+      "predictions": [
+        "cache/results_20261010_sources/af_next/original_merged/predictions.jsonl"
+      ],
+      "protocols": [
+        "cache/results_20261010_sources/af_next/original_protocols/shard_0/protocol_shard_000.json",
+        "cache/results_20261010_sources/af_next/original_protocols/shard_1/protocol_shard_001.json"
+      ],
+      "metrics": "cache/results_20261010_sources/af_next/original_merged/metrics.json",
+      "manifest": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/controls_manifests/original.jsonl"
+    },
+    {
+      "id": "gemma4_12b",
+      "label": "Gemma4-12B",
+      "predictions": [
+        "cache/results_20261010_sources/instance3/gemma4_12b__run_20261009_234728_qml214__PRIMARY/merged/predictions.jsonl"
+      ],
+      "protocols": [
+        "cache/results_20261010_sources/instance3/gemma4_12b__run_20261009_234728_qml214__PRIMARY/shard_0/protocol_shard_000.json",
+        "cache/results_20261010_sources/instance3/gemma4_12b__run_20261009_234728_qml214__PRIMARY/shard_1/protocol_shard_001.json"
+      ],
+      "metrics": "cache/results_20261010_sources/instance3/gemma4_12b__run_20261009_234728_qml214__PRIMARY/merged/metrics.json"
+    },
+    {
+      "id": "gemma4_e2b",
+      "label": "Gemma4-E2B",
+      "predictions": [
+        "cache/results_20261010_sources/gemma4_e2b/original_merged/predictions.jsonl"
+      ],
+      "protocols": [
+        "cache/results_20261010_sources/gemma4_e2b/original_protocols/shard_0/protocol_shard_000.json",
+        "cache/results_20261010_sources/gemma4_e2b/original_protocols/shard_1/protocol_shard_001.json"
+      ],
+      "metrics": "cache/results_20261010_sources/gemma4_e2b/original_merged/metrics.json",
+      "manifest": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/controls_manifests/original.jsonl"
+    },
+    {
+      "id": "midashenglm",
+      "label": "MiDaShengLM",
+      "predictions": [
+        "cache/results_20261010_sources/midashenglm/original_merged/predictions.jsonl"
+      ],
+      "protocols": [
+        "cache/results_20261010_sources/midashenglm/original_protocols/shard_0/protocol_shard_000.json",
+        "cache/results_20261010_sources/midashenglm/original_protocols/shard_1/protocol_shard_001.json"
+      ],
+      "metrics": "cache/results_20261010_sources/midashenglm/original_merged/metrics.json",
+      "manifest": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/controls_manifests/original.jsonl"
+    },
+    {
+      "id": "qwen25_omni",
+      "label": "Qwen2.5-Omni",
+      "predictions": [
+        "cache/results_20261010_sources/qwen25_omni/original_merged/predictions.jsonl"
+      ],
+      "protocols": [
+        "cache/results_20261010_sources/qwen25_omni/original_protocols/protocol_shard_000.json",
+        "cache/results_20261010_sources/qwen25_omni/original_protocols/protocol_shard_001.json"
+      ],
+      "metrics": "cache/results_20261010_sources/qwen25_omni/original_merged/metrics.json",
+      "manifest": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/controls_manifests/original.jsonl"
+    },
+    {
+      "id": "voxtral_small",
+      "label": "Voxtral-Small",
+      "predictions": [
+        "cache/results_20261010_sources/instance3/voxtral_small__run_20261009_222604_PH4ntU/merged/predictions.jsonl"
+      ],
+      "protocols": [
+        "cache/results_20261010_sources/instance3/voxtral_small__run_20261009_222604_PH4ntU/shard_0/protocol_shard_000.json",
+        "cache/results_20261010_sources/instance3/voxtral_small__run_20261009_222604_PH4ntU/shard_1/protocol_shard_001.json"
+      ],
+      "metrics": "cache/results_20261010_sources/instance3/voxtral_small__run_20261009_222604_PH4ntU/merged/metrics.json"
+    }
+  ],
+  "comparisons": [
+    {
+      "id": "qwen2_audio",
+      "label": "Qwen2-Audio",
+      "path": "cache/results_20261010_sources/instance1/qwen2_audio/comparison.json",
+      "paired_predictions": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/qwen2_audio/comparison_20261010_024523_20261010_024552_299386/paired_predictions.jsonl"
+    },
+    {
+      "id": "aero1_audio",
+      "label": "Aero1-Audio",
+      "path": "cache/results_20261010_sources/instance1/aero1_audio/comparison.json",
+      "paired_predictions": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/aero1_audio/comparison_20261010_035529_20261010_035554_509710/paired_predictions.jsonl"
+    },
+    {
+      "id": "voxtral_mini",
+      "label": "Voxtral-Mini",
+      "path": "cache/results_20261010_sources/paired_controls/eval_results/paired/voxtral_mini/comparison_20261010_103542_762159/comparison.json",
+      "paired_predictions": "cache/results_20261010_sources/paired_controls/eval_results/paired/voxtral_mini/comparison_20261010_103542_762159/paired_predictions.jsonl"
+    },
+    {
+      "id": "af_next",
+      "label": "AF-Next",
+      "path": "cache/results_20261010_sources/af_next/comparison_20261009_151952_528097/comparison.json",
+      "paired_predictions": "cache/results_20261010_sources/af_next/comparison_20261009_151952_528097/paired_predictions.jsonl"
+    },
+    {
+      "id": "gemma4_12b",
+      "label": "Gemma4-12B",
+      "path": "cache/results_20261010_sources/paired_controls/eval_results/paired/gemma4_12b/comparison_20261010_101452_028035/comparison.json",
+      "paired_predictions": "cache/results_20261010_sources/paired_controls/eval_results/paired/gemma4_12b/comparison_20261010_101452_028035/paired_predictions.jsonl"
+    },
+    {
+      "id": "gemma4_e2b",
+      "label": "Gemma4-E2B",
+      "path": "cache/results_20261010_sources/gemma4_e2b/comparison_20261009_132901_742157/comparison.json",
+      "paired_predictions": "cache/results_20261010_sources/gemma4_e2b/comparison_20261009_132901_742157/paired_predictions.jsonl"
+    },
+    {
+      "id": "midashenglm",
+      "label": "MiDaShengLM",
+      "path": "cache/results_20261010_sources/midashenglm/comparison_20261009_140755_009339/comparison.json",
+      "paired_predictions": "cache/results_20261010_sources/midashenglm/comparison_20261009_140755_009339/paired_predictions.jsonl"
+    },
+    {
+      "id": "qwen25_omni",
+      "label": "Qwen2.5-Omni",
+      "path": "cache/results_20261010_sources/qwen25_omni/comparison/comparison_20261010_012805_20261010_012843_301826/comparison.json",
+      "paired_predictions": "cache/results_20261010_sources/qwen25_omni/comparison/comparison_20261010_012805_20261010_012843_301826/paired_predictions.jsonl"
+    },
+    {
+      "id": "voxtral_small",
+      "label": "Voxtral-Small",
+      "path": "cache/results_20261010_sources/paired_controls/eval_results/paired/voxtral_small/comparison_20261010_103019_019113/comparison.json",
+      "paired_predictions": "cache/results_20261010_sources/paired_controls/eval_results/paired/voxtral_small/comparison_20261010_103019_019113/paired_predictions.jsonl"
+    }
+  ],
+  "input_relocations": {
+    "/root/autodl-tmp/eval_results/paired/gemma4_12b/silent/run_20261010_100625_XNZB51/merged/predictions.jsonl": "cache/results_20261010_sources/paired_controls/eval_results/paired/gemma4_12b/silent/run_20261010_100625_XNZB51/merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/paired/gemma4_12b/silent/run_20261010_100625_XNZB51/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/paired_controls/eval_results/paired/gemma4_12b/silent/run_20261010_100625_XNZB51/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/paired/gemma4_12b/silent/run_20261010_100625_XNZB51/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/paired_controls/eval_results/paired/gemma4_12b/silent/run_20261010_100625_XNZB51/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/paired/voxtral_mini/silent/run_20261010_103019_ZYchnN/merged/predictions.jsonl": "cache/results_20261010_sources/paired_controls/eval_results/paired/voxtral_mini/silent/run_20261010_103019_ZYchnN/merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/paired/voxtral_mini/silent/run_20261010_103019_ZYchnN/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/paired_controls/eval_results/paired/voxtral_mini/silent/run_20261010_103019_ZYchnN/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/paired/voxtral_mini/silent/run_20261010_103019_ZYchnN/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/paired_controls/eval_results/paired/voxtral_mini/silent/run_20261010_103019_ZYchnN/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/paired/voxtral_small/silent/run_20261010_101956_83vgRk/merged/predictions.jsonl": "cache/results_20261010_sources/paired_controls/eval_results/paired/voxtral_small/silent/run_20261010_101956_83vgRk/merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/paired/voxtral_small/silent/run_20261010_101956_83vgRk/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/paired_controls/eval_results/paired/voxtral_small/silent/run_20261010_101956_83vgRk/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/paired/voxtral_small/silent/run_20261010_101956_83vgRk/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/paired_controls/eval_results/paired/voxtral_small/silent/run_20261010_101956_83vgRk/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/aero1_audio/original/run_20261010_024632_Uz84GM/merged/predictions.jsonl": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/aero1_audio/original/run_20261010_024632_Uz84GM/merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/relabel_v1/aero1_audio/original/run_20261010_024632_Uz84GM/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/aero1_audio/original/run_20261010_024632_Uz84GM/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/aero1_audio/original/run_20261010_024632_Uz84GM/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/aero1_audio/original/run_20261010_024632_Uz84GM/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/aero1_audio/silent/run_20261010_032131_xU3SOa/merged/predictions.jsonl": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/aero1_audio/silent/run_20261010_032131_xU3SOa/merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/relabel_v1/aero1_audio/silent/run_20261010_032131_xU3SOa/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/aero1_audio/silent/run_20261010_032131_xU3SOa/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/aero1_audio/silent/run_20261010_032131_xU3SOa/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/aero1_audio/silent/run_20261010_032131_xU3SOa/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/af_next/original/run_20261009_144541_23bgH1/merged/predictions.jsonl": "cache/results_20261010_sources/af_next/original_merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/relabel_v1/af_next/original/run_20261009_144541_23bgH1/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/af_next/original_protocols/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/af_next/original/run_20261009_144541_23bgH1/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/af_next/original_protocols/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/af_next/silent/run_20261009_150457_nP6FVO/merged/predictions.jsonl": "cache/results_20261010_sources/af_next/silent_merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/relabel_v1/af_next/silent/run_20261009_150457_nP6FVO/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/af_next/silent_protocols/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/af_next/silent/run_20261009_150457_nP6FVO/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/af_next/silent_protocols/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/gemma4_e2b/original/run_20261009_131404_H1mWVT/merged/predictions.jsonl": "cache/results_20261010_sources/gemma4_e2b/original_merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/relabel_v1/gemma4_e2b/original/run_20261009_131404_H1mWVT/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/gemma4_e2b/original_protocols/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/gemma4_e2b/original/run_20261009_131404_H1mWVT/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/gemma4_e2b/original_protocols/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/gemma4_e2b/silent/run_20261009_132112_eDc1qZ/merged/predictions.jsonl": "cache/results_20261010_sources/gemma4_e2b/silent_merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/relabel_v1/gemma4_e2b/silent/run_20261009_132112_eDc1qZ/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/gemma4_e2b/silent_protocols/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/gemma4_e2b/silent/run_20261009_132112_eDc1qZ/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/gemma4_e2b/silent_protocols/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/midashenglm/original/run_20261009_135754_yn4AYE/merged/predictions.jsonl": "cache/results_20261010_sources/midashenglm/original_merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/relabel_v1/midashenglm/original/run_20261009_135754_yn4AYE/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/midashenglm/original_protocols/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/midashenglm/original/run_20261009_135754_yn4AYE/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/midashenglm/original_protocols/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/midashenglm/silent/run_20261009_140216_fPeb7P/merged/predictions.jsonl": "cache/results_20261010_sources/midashenglm/silent_merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/relabel_v1/midashenglm/silent/run_20261009_140216_fPeb7P/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/midashenglm/silent_protocols/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/midashenglm/silent/run_20261009_140216_fPeb7P/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/midashenglm/silent_protocols/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/qwen25_omni/original/run_20261009_220957_JFojcy/merged/predictions.jsonl": "cache/results_20261010_sources/qwen25_omni/original_merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/relabel_v1/qwen25_omni/original/run_20261009_220957_JFojcy/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/qwen25_omni/original_protocols/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/qwen25_omni/original/run_20261009_220957_JFojcy/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/qwen25_omni/original_protocols/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/qwen25_omni/silent/run_20261010_001653_lWZE20/merged/predictions.jsonl": "cache/results_20261010_sources/qwen25_omni/silent_merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/relabel_v1/qwen25_omni/silent/run_20261010_001653_lWZE20/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/qwen25_omni/silent_protocols/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/qwen25_omni/silent/run_20261010_001653_lWZE20/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/qwen25_omni/silent_protocols/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/qwen2_audio/original/run_20261010_014227_5mk2Ru/merged/predictions.jsonl": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/qwen2_audio/original/run_20261010_014227_5mk2Ru/merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/relabel_v1/qwen2_audio/original/run_20261010_014227_5mk2Ru/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/qwen2_audio/original/run_20261010_014227_5mk2Ru/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/qwen2_audio/original/run_20261010_014227_5mk2Ru/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/qwen2_audio/original/run_20261010_014227_5mk2Ru/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/qwen2_audio/silent/run_20261010_021346_vSE88l/merged/predictions.jsonl": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/qwen2_audio/silent/run_20261010_021346_vSE88l/merged/predictions.jsonl",
+    "/root/autodl-tmp/eval_results/relabel_v1/qwen2_audio/silent/run_20261010_021346_vSE88l/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/qwen2_audio/silent/run_20261010_021346_vSE88l/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/eval_results/relabel_v1/qwen2_audio/silent/run_20261010_021346_vSE88l/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/eval_results_relabel_v1/qwen2_audio/silent/run_20261010_021346_vSE88l/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/underwater/eval_results/gemma4/run_20261009_234728_qml214/merged/predictions.jsonl": "cache/results_20261010_sources/instance3/gemma4_12b__run_20261009_234728_qml214__PRIMARY/merged/predictions.jsonl",
+    "/root/autodl-tmp/underwater/eval_results/gemma4/run_20261009_234728_qml214/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/instance3/gemma4_12b__run_20261009_234728_qml214__PRIMARY/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/underwater/eval_results/gemma4/run_20261009_234728_qml214/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/instance3/gemma4_12b__run_20261009_234728_qml214__PRIMARY/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/underwater/eval_results/voxtral_mini/run_20261009_223928_TwZzaZ/merged/predictions.jsonl": "cache/results_20261010_sources/instance3/voxtral_mini__run_20261009_223928_TwZzaZ/merged/predictions.jsonl",
+    "/root/autodl-tmp/underwater/eval_results/voxtral_mini/run_20261009_223928_TwZzaZ/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/instance3/voxtral_mini__run_20261009_223928_TwZzaZ/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/underwater/eval_results/voxtral_mini/run_20261009_223928_TwZzaZ/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/instance3/voxtral_mini__run_20261009_223928_TwZzaZ/shard_1/protocol_shard_001.json",
+    "/root/autodl-tmp/underwater/eval_results/voxtral_small/run_20261009_222604_PH4ntU/merged/predictions.jsonl": "cache/results_20261010_sources/instance3/voxtral_small__run_20261009_222604_PH4ntU/merged/predictions.jsonl",
+    "/root/autodl-tmp/underwater/eval_results/voxtral_small/run_20261009_222604_PH4ntU/shard_0/protocol_shard_000.json": "cache/results_20261010_sources/instance3/voxtral_small__run_20261009_222604_PH4ntU/shard_0/protocol_shard_000.json",
+    "/root/autodl-tmp/underwater/eval_results/voxtral_small/run_20261009_222604_PH4ntU/shard_1/protocol_shard_001.json": "cache/results_20261010_sources/instance3/voxtral_small__run_20261009_222604_PH4ntU/shard_1/protocol_shard_001.json"
+  },
+  "silent_manifest": "cache/results_20261010_sources/instance1/instance1_results_20261010_035554/staging/controls_manifests/silent.jsonl"
+}

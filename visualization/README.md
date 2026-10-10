@@ -1,6 +1,6 @@
 # UA-Bench 论文可视化
 
-首批实现图 B、A1、A2。评测核心和原有诊断入口继续保留；论文绘图不运行模型、不重算传播、不修改发布 JSONL 或音频。
+已实现数据图 B、A1、A2、C 与结果图 D、E、F、G。D–G 已接入 2026-10-10 的九模型完整运行与静音配对结果；论文绘图不运行模型、不重算传播、不修改发布 JSONL 或音频。结果来源、校验范围和重绘命令见 [RESULTS_GUIDE.md](RESULTS_GUIDE.md)。
 
 ## 目录
 
@@ -12,10 +12,23 @@ visualization/
   plot_distribution.py      # 图 B：完整 test 与 Eval 的 ECDF
   acoustic_analysis.py      # 代表样本、符号窗、STFT、Welch、谱质心统计
   plot_acoustic.py           # 图 A1/A2
+  channels.example.json     # C 的示例类别、源归档和缓存配置
+  channel_data.py            # C 的 source/channel 配对、选样与校验
+  plot_channel.py            # 图 C：源与传播后的声学结构
+  import_result_archive.py   # 安全导入双层 tar 结果并保存 SHA 索引
+  results.20261010.example.json # 九模型归档结果配置示例
+  results.py / archive_protocol.py / paired_archive_validation.py
+  plot_results.py            # 图 D/E/F/G 的独立出版版式
   figures/data/
     selection_distributions.py / .pdf / .png / .json / .data.json.gz
     acoustic_active.py / .pdf / .png / .json / .data.json.gz
     acoustic_ships.py / .pdf / .png / .json / .data.json.gz
+    channel_examples.py / .pdf / .png / .json / .data.json.gz
+  figures/results/
+    class_diagnostics.py / .pdf / .png / .json / .data.json.gz
+    error_decomposition.py / .pdf / .png / .json / .data.json.gz
+    metadata_performance.py / .pdf / .png / .json / .data.json.gz
+    silence_control.py / .pdf / .png / .json / .data.json.gz
   cache/                    # 头索引及紧凑绘图数据，Git 忽略
   tests/
 ```
@@ -66,23 +79,39 @@ A2 第六幅对每类全部 200 条 Eval 记录，使用与代表谱相同的 We
 
 ## Tavotto
 
-图库路径是 `D:\sz_workplace\UAbench\visualization\figures\data`。三个入口均有无参 `main()`、导入阶段无数据读取/出图、静态字面量 PDF/PNG 文件名、不调用 `plt.show()`。Tavotto 的渲染 worker 调用 `main()` 时不写数据缓存或溯源 JSON；独立运行脚本时才写伴随记录。
+数据图库在 `D:\sz_workplace\UAbench\visualization\figures\data`，结果图库在 `D:\sz_workplace\UAbench\visualization\figures\results`。八个入口均有无参 `main()`、导入阶段无数据读取/出图、静态字面量 PDF/PNG 文件名、不调用 `plt.show()`。Tavotto 的渲染 worker 调用 `main()` 时不写数据缓存或溯源 JSON；独立运行脚本时才写伴随记录。
 
 本机可执行真实引擎验收：
 
 ```powershell
 & $plotPython -m visualization.verify_tavotto
+& $plotPython -m visualization.verify_results_tavotto --results-config visualization/results.local.json D E F G
 ```
 
-验收适配器针对 Tavotto **0.18.0**：生成注册表，实际调用 safe worker，检查可编辑元素和出版预检，并核对最终 PDF 页尺寸与 PNG 分辨率。结果在 `figures/data/verification_tavotto.json`。普通画图只依赖 `requirements.txt`；此可选验收另需 `tavotto[worker]==0.18.0`。升级 Tavotto 后需重新核对该适配器。
+两个验收适配器针对 Tavotto **0.18.0**：生成注册表，实际调用 safe worker，检查可编辑元素和出版预检，并核对最终 PDF 页尺寸、字体/矢量对象、PNG 分辨率及图件哈希。报告分别在 `figures/data/verification_tavotto.json` 与 `figures/results/verification_tavotto.json`。普通画图只依赖 `requirements.txt`；此可选验收另需 `tavotto[worker]==0.18.0`。升级 Tavotto 后需重新核对适配器。D–G 最新图的本机预检无阻断项；画幅比例提示对应已确认的 180 mm 横向紧凑版。
 
-本地引擎验收不等同于 MCP 或交互画布验收。已载入 Tavotto MCP 工具的会话可对以上图库调用 `tavotto_refresh_project`，再用三个 stem 打开、修改和预检；首次访问按插件提示授权具体图库目录。
+本地引擎验收不等同于 MCP 或交互画布验收。已载入 Tavotto MCP 工具的会话可对以上图库调用 `tavotto_refresh_project`，再按需打开对应 stem 修改和预检；首次访问按插件提示授权具体图库目录。
 
-当前 B、A1 为 **180×135 mm（4:3）**，A2 为 **180×101.25 mm（16:9）**。Tavotto 验收中的 `journal.widths_mm.double` 明确使用用户指定的 180 mm；字体、线宽、裁切等检查保持原规范。初版 150 mm 纵向图保存在本机 `cache/portrait_150mm/`，便于对照。选样规则、数值、谱分析参数和功率参考没有因重排而改变。
+当前 B、A1 为 **180×110 mm**，A2 为 **180×90 mm**。2026-10-09 将画布高度、行间空白及底部区域压缩，同时保留 180 mm 宽、9 pt 字号和全部面板；选样规则、数值、谱分析参数和功率参考保持不变。验收报告以图件哈希绑定当前产物。
 
-A2 的上一版五面板图保存在本机 `cache/ship_five_panels_180mm/`。六面板版本保留五条代表谱和分析参数，新增各类全部 Eval 录音的谱质心汇总；此新增统计单独记录于 `centroid_summary` 和 `raw_data.ship_centroids`。
+各图的紧凑高度已写入绘图代码默认值，新数据沿用相同版式。必要时可在 `config.local.json` 的 `style` 中以毫米覆盖高度：
 
-六面板版本的独立数值、哈希和文件检查见 `figures/data/acoustic_ships.validation.json`。2026-10-09 的 MCP 打开尝试被宿主自动拒绝工作区授权，状态保存在 `acoustic_ships.tavotto_status.json`，未完成该版本的 Tavotto 交互预检。此前的预检报告只适用于报告中哈希匹配的旧图件。
+| 图 | 高度配置键 | 180 mm 宽时的默认高度 |
+|---|---|---|
+| A1 | `active_height_mm` | 110 mm |
+| A2 | `ship_height_mm` | 90 mm |
+| B | `distribution_height_mm` | 110 mm |
+| C | `channel_height_mm` | 115 mm |
+| D | `diagnostic_height_mm` | 120 mm |
+| E | `error_height_mm` | 85 mm |
+| F | `metadata_height_mm` | 85 mm |
+| G | `silence_height_mm` | 85 mm |
+
+调整配置后按常规先重新 `prepare`；结果图再执行 `prepare-results`。只更新绘图代码的默认高度和间距时，可直接运行对应 `render`，不需要重跑评测。D 的十三行类别保留较多高度，使圆角方块、数值和 P/R/F1 标记仍可辨认。
+
+A2 的六面板图保留五条代表谱和分析参数，并汇总各类全部 Eval 录音的谱质心；此统计单独记录于 `centroid_summary` 和 `raw_data.ship_centroids`。
+
+六面板图的数值与哈希见 `figures/data/acoustic_ships.json` 和 `acoustic_ships.data.json.gz`；B、A1、A2、C 的本机 Tavotto 检查见 `figures/data/verification_tavotto.json`。此前 MCP 工作区授权未完成，因此本机检查不代表交互画布验收。
 
 ## 回归检查
 
@@ -93,4 +122,6 @@ A2 的上一版五面板图保存在本机 `cache/ship_five_panels_180mm/`。六
 
 `.json` 保存输入与代码哈希、软件版本、尺寸及图件哈希；`.data.json.gz` 保存可复算的绘图数据、样本选择及分析参数。修改图件代码后重新运行对应入口，再执行验收；不用重跑评测。
 
-图 C、D、E、F、G 不在首批实现中。正式模型预测准备好后再扩展结果图，避免从旧聚合指标推算评测执行状态。
+结果图使用单独的 `results.local.json` 和 `prepare-results` 命令。当前本机配置为 `archived_verified`，从保存的九组预测、精确清单和签名协议复核 D–G；它会如实记录与本机源码的版本差异。未来用当前检出代码直接运行的新实验仍可采用更严格的 `verified` 模式。旧 ZIP 仅供 `legacy_preview` 历史对照。完整步骤见 [RESULTS_GUIDE.md](RESULTS_GUIDE.md)。
+
+图 C 的同源配对入口为 `figures/data/channel_examples.py`：先配置 `channels.local.json`，运行 `prepare-channels`，之后 `render C`。三行展示脉冲、通信、舰船的源音频及真实传播输出，完整定义与归档读取说明见 [CHANNEL_GUIDE.md](CHANNEL_GUIDE.md)。

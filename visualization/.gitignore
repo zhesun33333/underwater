@@ -1,4 +1,6 @@
 config.local.json
+results.local.json
+channels.local.json
 cache/
 figures/data/*.pdf
 figures/data/*.png
@@ -6,3 +8,9 @@ figures/data/*.json
 figures/data/*.json.gz
 figures/data/tavottofile/
 figures/data/.tavotto*
+figures/results/*.pdf
+figures/results/*.png
+figures/results/*.json
+figures/results/*.json.gz
+figures/results/tavottofile/
+figures/results/.tavotto*

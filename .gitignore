@@ -16,6 +16,7 @@ temp_bellhop/
 # Personal / cloud cache (do not commit)
 .autodl/
 .claude/
+.workbuddy/
 
 # OS
 .DS_Store

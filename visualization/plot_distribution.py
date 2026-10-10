@@ -171,7 +171,7 @@ def build_figure(full_records: list[dict], eval_records: list[dict],
     """
     relationship = _validate_relationship(full_records, eval_records)
     width_mm = float(style.get("width_mm", 180))
-    height_mm = float(style.get("distribution_height_mm", width_mm * 0.75))
+    height_mm = float(style.get("distribution_height_mm", width_mm * 11 / 18))
     font_size = float(style.get("font_size_pt", 9))
     font_family = str(style.get("font_family", "Times New Roman"))
     legend_frame = bool(style.get("legend_frame", False))
@@ -215,8 +215,8 @@ def build_figure(full_records: list[dict], eval_records: list[dict],
     with mpl.rc_context(rc):
         figure = Figure(figsize=(width_mm / 25.4, height_mm / 25.4))
         axes = figure.subplots(2, 2, sharex=False, sharey=False)
-        figure.subplots_adjust(left=0.085, right=0.98, bottom=0.13, top=0.845,
-                               wspace=0.27, hspace=0.75)
+        figure.subplots_adjust(left=0.085, right=0.98, bottom=0.14, top=0.835,
+                               wspace=0.27, hspace=0.78)
         for ax, (key, title, field, families, scale, xlabel, positive) in zip(axes.flat, _PANELS):
             series = [
                 _series_data(records, collection, family, field, positive)

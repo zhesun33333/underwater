@@ -79,10 +79,10 @@ def build_active_figure(eval_records: list[dict], style: dict) -> tuple:
             raise ValueError(f"No nonzero acoustic power in selected {group} examples")
     width_mm = style.get("width_mm", 180)
     width = width_mm / 25.4
-    height = style.get("active_height_mm", width_mm * 0.75) / 25.4
+    height = style.get("active_height_mm", width_mm * 11 / 18) / 25.4
     fig = plt.figure(figsize=(width, height), dpi=max(300, style.get("dpi", 300)))
     grid = fig.add_gridspec(2, 4, left=0.09, right=0.985,
-                           bottom=0.245, top=0.935, wspace=0.67, hspace=0.53)
+                           bottom=0.25, top=0.94, wspace=0.67, hspace=0.48)
     # Full-waveform views first; the four single-carrier symbol windows form
     # their own row. Their analysis and selected records remain unchanged.
     display_order = PULSE_CLASSES + ("OFDM",) + COMMUNICATION_CLASSES[:-1]
@@ -124,7 +124,7 @@ def build_active_figure(eval_records: list[dict], style: dict) -> tuple:
                       "display_time_unit": "ms" if local_time else "s",
                       "display_time_origin_s": time_origin, "display_image_extent": display_extent})
     for col, (family, label) in enumerate((("pulse", "Pulse"), ("communication", "Communication"))):
-        cax = fig.add_axes([0.12 + col * 0.48, 0.095, 0.32, 0.021])
+        cax = fig.add_axes([0.12 + col * 0.48, 0.12, 0.32, 0.019])
         bar = fig.colorbar(ScalarMappable(norm=norm, cmap=cm.batlow), cax=cax, orientation="horizontal")
         bar.set_ticks([-50, -25, 0])
         bar.set_label(f"{label} power (dB)\n0 dB = family maximum", labelpad=3)
@@ -187,10 +187,10 @@ def build_ship_figure(eval_records: list[dict], style: dict) -> tuple:
     limits = [5 * math.floor(minimum / 5) - 2, 5 * math.ceil(maximum / 5) + 2]
     width_mm = style.get("width_mm", 180)
     width = width_mm / 25.4
-    height = style.get("ship_height_mm", width_mm * 9 / 16) / 25.4
+    height = style.get("ship_height_mm", width_mm / 2) / 25.4
     fig = plt.figure(figsize=(width, height), dpi=max(300, style.get("dpi", 300)))
-    grid = fig.add_gridspec(2, 3, left=0.08, right=0.985, bottom=0.18, top=0.91,
-                           wspace=0.75, hspace=0.72)
+    grid = fig.add_gridspec(2, 3, left=0.08, right=0.985, bottom=0.185, top=0.92,
+                           wspace=0.75, hspace=0.68)
     positions = ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1))
     for index, leaf in enumerate(SHIP_CLASSES):
         row, col = positions[index]

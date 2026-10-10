@@ -18,7 +18,7 @@ import sys
 
 from .project import ROOT, sha256
 
-STEMS = ("selection_distributions", "acoustic_active", "acoustic_ships")
+STEMS = ("selection_distributions", "acoustic_active", "acoustic_ships", "channel_examples")
 
 
 def artifact_check(path: Path, width_mm: float) -> dict:
@@ -43,7 +43,7 @@ def artifact_check(path: Path, width_mm: float) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stems", nargs="*", metavar="STEM", help="Default: all three figure stems")
+    parser.add_argument("stems", nargs="*", metavar="STEM", help="Default: all four data-figure stems")
     args = parser.parse_args()
     args.stems = args.stems or list(STEMS)
     if set(args.stems) - set(STEMS):

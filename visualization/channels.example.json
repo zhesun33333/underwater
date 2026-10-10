@@ -1,0 +1,8 @@
+{
+  "cache_dir": "cache/channel_examples",
+  "rows": [
+    {"class": "LFM", "source_archive": "../raw_data/PulseCom.tar"},
+    {"class": "2FSK", "source_archive": "../raw_data/PulseCom.tar"},
+    {"class": "cruise", "source_archive": "../raw_data/cruise_ship.tar"}
+  ]
+}
