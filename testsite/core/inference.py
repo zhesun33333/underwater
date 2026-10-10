@@ -180,6 +180,41 @@ class _BaseAudioBackend:
 
 
 # ============================================================
+# Forward-kwarg compatibility shim
+# ============================================================
+def _filter_unsupported_forward_kwargs(model, label):
+    """Drop generation kwargs the model ``forward`` does not declare.
+
+    transformers 4.54+ passes ``cache_position`` into ``model(**inputs)`` during
+    ``generate()``. Checkpoints whose ``forward`` predates that (Qwen2-Audio,
+    Aero-1-Audio) raise ``TypeError``. The wrapped language model recomputes
+    positions from the KV cache when the argument is absent, so silently
+    dropping undeclared kwargs does not change decoding.
+    """
+    import functools as _functools
+    import inspect as _inspect
+
+    original = model.forward
+    allowed = set(_inspect.signature(original).parameters)
+    warned = {"done": False}
+
+    @_functools.wraps(original)
+    def forward(*args, **kwargs):
+        filtered = {k: v for k, v in kwargs.items() if k in allowed}
+        dropped = set(kwargs) - set(filtered)
+        if dropped and not warned["done"]:
+            warned["done"] = True
+            print(f"  [{label}] compat shim dropped unsupported forward kwargs: "
+                  f"{sorted(dropped)}")
+        return original(*args, **filtered)
+
+    # functools.wraps keeps __wrapped__, so inspect.signature() (used by
+    # transformers' _validate_model_kwargs) still sees the real signature.
+    model.forward = forward
+    return model
+
+
+# ============================================================
 # Qwen2-Audio-7B
 # ============================================================
 class Qwen2AudioBackend(_BaseAudioBackend):
@@ -187,11 +222,12 @@ class Qwen2AudioBackend(_BaseAudioBackend):
 
     def _load_model(self):
         from transformers import Qwen2AudioForConditionalGeneration
-        return Qwen2AudioForConditionalGeneration.from_pretrained(
+        model = Qwen2AudioForConditionalGeneration.from_pretrained(
             self.model_id, torch_dtype=self.torch_dtype,
             device_map=self.device if self.device.startswith("cuda") else self.device,
             low_cpu_mem_usage=True,
         )
+        return _filter_unsupported_forward_kwargs(model, "qwen2_audio")
 
     def _load_processor(self):
         from transformers import AutoProcessor
@@ -207,11 +243,24 @@ class Aero1AudioBackend(_BaseAudioBackend):
 
     def _load_model(self):
         from transformers import AutoModelForCausalLM
-        return AutoModelForCausalLM.from_pretrained(
+        # The checkpoint's remote modelling_aero.py imports
+        # ``Qwen2AudioFlashAttention2``, which transformers 4.54 removed. It is
+        # only referenced when _attn_implementation == "flash_attention_2"
+        # (this run uses sdpa), so expose a placeholder subclass — never an
+        # alias of the real attention class, to avoid clobbering its forward.
+        import transformers.models.qwen2_audio.modeling_qwen2_audio as _qa
+        if not hasattr(_qa, "Qwen2AudioFlashAttention2"):
+            class _Qwen2AudioFlashAttention2Shim(_qa.Qwen2AudioAttention):
+                """Placeholder for a class removed in transformers 4.54."""
+
+            _qa.Qwen2AudioFlashAttention2 = _Qwen2AudioFlashAttention2Shim
+            print("  [aero1_audio] injected Qwen2AudioFlashAttention2 shim")
+        model = AutoModelForCausalLM.from_pretrained(
             self.model_id, torch_dtype=self.torch_dtype,
             device_map=self.device if self.device.startswith("cuda") else self.device,
             low_cpu_mem_usage=True, trust_remote_code=True,
         )
+        return _filter_unsupported_forward_kwargs(model, "aero1_audio")
 
     def _load_processor(self):
         from transformers import AutoProcessor
@@ -335,6 +384,21 @@ class Qwen25OmniBackend(_BaseAudioBackend):
         # Batched decoder-only generation must left-pad prompts of different
         # lengths so generation always starts after the final real token.
         processor.tokenizer.padding_side = "left"
+        # The checkpoint ships a generation_config.json that only carries
+        # "_from_model_config": its eos/pad ids live in the nested
+        # thinker_config, so GenerationConfig ends up with eos_token_id=None.
+        # generate() then has no stop token and decodes the whole
+        # max_new_tokens budget (hallucinated follow-up "Human:" turns), which
+        # the single-letter answer parser rejects -> every metric becomes 0.
+        # Fill the ids from the tokenizer so decoding stops at <|im_end|>.
+        tokenizer = processor.tokenizer
+        if getattr(tokenizer, "pad_token_id", None) is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        eos_id = tokenizer.eos_token_id
+        pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else eos_id
+        self.model.generation_config.eos_token_id = eos_id
+        self.model.generation_config.pad_token_id = pad_id
+        print(f"  generation stop ids: eos={eos_id} pad={pad_id}")
         return processor
 
     @staticmethod
@@ -365,12 +429,22 @@ class Qwen25OmniBackend(_BaseAudioBackend):
                                 use_audio_in_video=False)
         inputs = inputs.to(self.model.device).to(self.model.dtype)
         temp = self.default_temperature if temperature is None else temperature
+        # Belt and braces: pass the stop ids explicitly as well, so decoding is
+        # bounded even if a future transformers version ignores the patched
+        # generation_config or the checkpoint's empty one is reloaded.
+        tokenizer = self.processor.tokenizer
+        eos_id = getattr(self.model.generation_config, "eos_token_id", None)
+        if eos_id is None:
+            eos_id = tokenizer.eos_token_id
+        pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else eos_id
         with torch.inference_mode():
             ids = self.model.generate(
                 **inputs, use_audio_in_video=False,
                 max_new_tokens=max_new_tokens or self.max_new_tokens,
                 do_sample=temp > 0,
                 temperature=temp if temp > 0 else None,
+                eos_token_id=eos_id,
+                pad_token_id=pad_id,
             )
         completion = ids[:, inputs["input_ids"].shape[1]:]
         return [x.strip() for x in self.processor.batch_decode(
