@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from .plot_acoustic import FAMILY_COLORS, _axis
-from .result_analysis import CLASS_ORDER, CLASS_TO_FAMILY, DISPLAY_NAMES, model_performance_range
+from .plot_acoustic import _axis
+from .plot_class_diagnostics import build_class_diagnostics
+from .result_analysis import model_performance_range
 
 
 def _figure(data, height_key, height_ratio=17/36):
@@ -46,122 +47,6 @@ def _metadata_styles(runs):
     return {r["id"]: {"color": colors[slots[r["id"]]], "marker": markers[slots[r["id"]]],
                        "linestyle": "-" if dashes[slots[r["id"]]] is None else (0, dashes[slots[r["id"]]])}
             for r in runs}
-
-
-def build_class_diagnostics(data):
-    from matplotlib.cm import ScalarMappable
-    from matplotlib.colors import FuncNorm, LinearSegmentedColormap
-    from matplotlib.patches import FancyBboxPatch
-    from matplotlib.ticker import PercentFormatter
-    run = next((r for r in data["runs"] if r["id"] == data["diagnostic_model"]), None)
-    if run is None:
-        raise ValueError("D requires a configured diagnostic_model with a complete confusion matrix")
-    values = run["diagnostics"]
-    fig = _figure(data, "diagnostic_height_mm", 2/3)
-    grid = fig.add_gridspec(1, 2, width_ratios=[2.1, 1], left=0.12, right=0.985,
-                           bottom=0.28, top=0.87, wspace=0.52)
-    matrix_ax, score_ax = (fig.add_subplot(grid[0, i]) for i in range(2))
-    fraction = np.asarray(values["row_fraction"])
-    log_knee = .03
-
-    def signed_log1p(x):
-        x = np.asarray(x, dtype=float)
-        return np.sign(x) * np.log1p(np.abs(x) / log_knee)
-
-    def signed_expm1(y):
-        y = np.asarray(y, dtype=float)
-        return np.sign(y) * log_knee * np.expm1(np.abs(y))
-
-    full_scale = float(signed_log1p(1))
-    palette = [(0., "#E4EFF4"), (.15, "#B9D9E3"), (.4, "#66AABB"),
-               (.7, "#28758B"), (1., "#12384F")]
-    cmap = LinearSegmentedColormap.from_list("uab_mist_teal", palette)
-    color_scale = ScalarMappable(norm=FuncNorm((signed_log1p, signed_expm1), vmin=0, vmax=1), cmap=cmap)
-    # Convert vertical data units so each glyph is square in physical space.
-    box = matrix_ax.get_position()
-    cell_aspect = (box.width * fig.get_figwidth() / 15) / (box.height * fig.get_figheight() / 13)
-    zero_rows, zero_cols = np.where(fraction == 0)
-    matrix_ax.scatter(zero_cols, zero_rows, s=2, c="#CFD8DE", linewidths=0, zorder=1)
-    for row, col in np.argwhere(fraction > 0):
-        cell = float(fraction[row, col])
-        # Log compression separates rare and mid-frequency errors while retaining a visible minimum.
-        # Glyph area is a monotonic cue, not a probability-proportional encoding.
-        side = .16 + .78 * float(signed_log1p(cell)) / full_scale
-        height = side * cell_aspect
-        tile = FancyBboxPatch((col-side/2, row-height/2), side, height,
-                             boxstyle=f"round,pad=0,rounding_size={side*.19}",
-                             mutation_aspect=cell_aspect, facecolor=color_scale.to_rgba(cell),
-                             edgecolor="none", linewidth=0, zorder=2, rasterized=False)
-        tile.set_gid(f"confusion-{row}-{col}")
-        matrix_ax.add_patch(tile)
-    matrix_ax.set_xlim(-0.5, 14.5)
-    matrix_ax.set_ylim(12.5, -0.5)
-    column_names = DISPLAY_NAMES[:12] + ["Underw.", "Unres.", "Cascade"]
-    matrix_ax.set_xticks(range(15), column_names, rotation=90)
-    matrix_ax.set_yticks(range(13), DISPLAY_NAMES)
-    matrix_ax.set_xlabel("Predicted class", labelpad=3)
-    matrix_ax.set_ylabel("True class", labelpad=2)
-    matrix_ax.set_title("(a) Confusion", pad=5)
-    for row, col in np.argwhere(fraction >= values["annotation_threshold_fraction"]):
-        cell = fraction[row, col]
-        rgb = np.asarray(color_scale.to_rgba(cell)[:3])
-        linear = np.where(rgb <= .04045, rgb/12.92, ((rgb+.055)/1.055)**2.4)
-        luminance = float(linear @ np.array([.2126, .7152, .0722]))
-        matrix_ax.text(col, row, f"{100*cell:.0f}", ha="center", va="center",
-                       color="white" if luminance < .179 else "black", zorder=3)
-    for boundary in (2.5, 7.5):
-        matrix_ax.axhline(boundary, color="#DCE5E9", linewidth=0.5, zorder=0)
-        matrix_ax.axvline(boundary, color="#DCE5E9", linewidth=0.5, zorder=0)
-    matrix_ax.axvline(12.5, color="#C4D3DB", linewidth=0.5, zorder=0)
-    for offset, key, marker, label in ((-.21, "precision", "o", "P"),
-                                      (0, "recall", "^", "R"), (.21, "f1", "s", "F1")):
-        score_ax.plot(values[key], np.arange(13)+offset, linestyle="none", marker=marker,
-                      markersize=3, color="black", markerfacecolor="white" if key == "recall" else "black",
-                      markeredgewidth=0.75, label=label)
-    score_ax.set_xscale("function", functions=(signed_log1p, signed_expm1))
-    score_ax.set_xlim(-.01, 1.15)
-    score_ax.set_ylim(12.5, -0.5)
-    score_ax.set_xticks([0, .05, .2, 1])
-    score_ax.xaxis.set_major_formatter(PercentFormatter(1, decimals=0))
-    score_ax.set_yticks(range(13), DISPLAY_NAMES)
-    score_ax.set_xlabel("Score (%) · log1p scale", labelpad=3)
-    score_ax.set_ylabel("Class", labelpad=2)
-    score_ax.set_title("(b) Class metrics", pad=5)
-    score_ax.legend(loc="lower center", bbox_to_anchor=(.5, 1.045), ncol=3,
-                    frameon=data["style"]["legend_frame"], handletextpad=.3, columnspacing=.7)
-    for boundary in (2.5, 7.5):
-        score_ax.axhline(boundary, color="0.8", linewidth=0.5)
-    for ax in (matrix_ax, score_ax):
-        _axis(ax)
-        for tick, key in zip(ax.get_yticklabels(), CLASS_ORDER):
-            tick.set_color(FAMILY_COLORS[CLASS_TO_FAMILY[key]])
-    cax = fig.add_axes([.14, .12, .36, .018])
-    bar = fig.colorbar(color_scale, cax=cax, orientation="horizontal")
-    bar.solids.set_rasterized(False)
-    bar.set_ticks([0, .05, .2, .5, 1])
-    bar.ax.xaxis.set_major_formatter(PercentFormatter(1, decimals=0))
-    bar.set_label("True-class share (%)", labelpad=2)
-    _axis(cax)
-    fig.text(.755, .098, "Color / size: log1p(row share)\nDots: zero observations",
-             ha="center", va="center", linespacing=1.5)
-    fig.suptitle(f"{run['label']}  |  n = {values['n']:,}", y=.99)
-    fig.text(.53, .015, _run_source_note(data), ha="center", va="bottom")
-    return fig, {"figure": "class_diagnostics", "model": run["label"], "mode": data["mode"],
-                 "audit": run["audit"], "diagnostics": values,
-                 "normalization": "all samples of each true class, including unresolved and cascaded predictions",
-                 "heatmap_encoding": {"glyph": "rounded square", "palette": palette,
-                                      "color_norm": "log1p", "color_limits": [0, 1],
-                                      "log1p_knee_fraction": log_knee,
-                                      "color_and_size_transform": "log1p(row_fraction / 0.03) / log1p(1 / 0.03)",
-                                      "positive_side_in_cell_widths": "0.16 + 0.78 * log1p(row_fraction / 0.03) / log1p(1 / 0.03)",
-                                      "size_meaning": "monotonic cue; area is not proportional to probability",
-                                      "corner_radius_fraction_of_side": .19,
-                                      "zero": "small neutral dot; no colored square",
-                                      "cell_label_minimum_fraction": values["annotation_threshold_fraction"]},
-                 "score_axis": {"scale": "zero-preserving signed log1p", "log1p_knee_fraction": log_knee,
-                                "limits": [-.01, 1.15], "ticks_raw_fraction": [0, .05, .2, 1],
-                                "zero_predicted_precision": values["zero_predicted_precision"]},
-                 "family_colors": FAMILY_COLORS}
 
 
 def build_error_decomposition(data):

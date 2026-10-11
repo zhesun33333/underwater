@@ -1,6 +1,6 @@
 # 论文结果图 D–G
 
-代码在 `visualization/`，入口与输出在 `visualization/figures/results/`。采用 180 mm 横向、Times New Roman 9 pt、无边框图例；D 为 180×120 mm，E/F/G 为 180×85 mm。2026-10-10 归档已生成 D、E、F、G 四张最新结果图。下文的“归档核验”表示核对已保存的预测、指标、运行协议与输入哈希，并不表示重新运行模型。
+代码在 `visualization/`，入口与输出在 `visualization/figures/results/`。采用 180 mm 横向、Times New Roman 9 pt、无边框图例；D 为 180×112 mm，E/F/G 为 180×85 mm。2026-10-10 归档已生成 D、E、F、G 四张最新结果图。下文的“归档核验”表示核对已保存的预测、指标、运行协议与输入哈希，并不表示重新运行模型。
 
 ## 2026-10-10 最新结果
 
@@ -8,12 +8,12 @@
 
 | 图 | 当前内容 | 已核对范围 |
 |---|---|---|
-| D `class_diagnostics` | Qwen2.5-Omni 的 13 类混淆矩阵及 P/R/F1 | 2,600 条逐样本预测、保存指标和原始运行协议 |
+| D `class_diagnostics` | MiDaShengLM 的 13 类混淆矩阵泡泡图及 P/R/F1 点阵表 | 2,600 条逐样本预测、保存指标和原始运行协议 |
 | E `error_decomposition` | 九模型五种互斥结局 | 每模型 2,600 条；显式解析状态 |
 | F `metadata_performance` | 九模型的主动信号/舰船元数据分层召回 | 同一 Eval 的分层映射；各层九模型最高—最低实测范围 |
 | G `silence_control` | 九模型原音频与匹配静音的 L3/L1 Accuracy | 每模型 2,600 对；配对记录、输入哈希及两条件计数 |
 
-九模型为 Qwen2-Audio、Aero1-Audio、Voxtral-Mini、AF-Next、Gemma4-12B、Gemma4-E2B、MiDaShengLM、Qwen2.5-Omni 和 Voxtral-Small。D 的 `diagnostic_model` 固定为 Qwen2.5-Omni，作为单模型的诊断示例，不代表九模型的平均表现。原先选用的 Qwen2-Audio 在八个主动类全部落入 Cascade，难以展示叶类混淆；Qwen2.5-Omni 的主动/舰船正确数分别为 143/1600、198/1000，两组 Cascade 分别为 702/1600、12/1000，13 类中 7 类的对角线非零。选择依据是两类信号均保留了可观察的正确与错误叶类，而非仅比较总准确率；它仍有显著舰船预测偏置，1000 条舰船样本中 884 条预测为图中的 Naval（内部类别为 Warship）。九模型的总体比较仍见 E/F/G。F 的图例及上下界使用全部九个模型。
+九模型为 Qwen2-Audio、Aero1-Audio、Voxtral-Mini、AF-Next、Gemma4-12B、Gemma4-E2B、MiDaShengLM、Qwen2.5-Omni 和 Voxtral-Small。D 的 `diagnostic_model` 选用 MiDaShengLM，作为单模型的诊断示例，不代表九模型的平均表现。2,600 条样本中有 1,105 条预测为 Cascade；13 个真实类别的正确叶类预测合计 268 条，其中主动信号 117 条、舰船 151 条。完整矩阵有 15 个预测列，当前仅显示 8 个非零列，并将 Cascade 放在第一列；另外 7 个全零列在图下注明。九模型的总体比较仍见 E/F/G。F 的图例及上下界使用全部九个模型。
 
 该包中六个原始运行绑定 SHA-256 前缀 `049a9a35` 的归档清单，另外三个（Voxtral-Mini、Gemma4-12B、Voxtral-Small）绑定本地测试集清单 `248f827f`。两份清单的 2,600 个 ID、真实标签、问题、版本和元数据逐条相同；差别只在 `audio` 字段的路径形式：归档清单是 Linux 绝对路径，本地清单是相对路径。九个静音运行绑定同一份静音清单 `56e2050d`。比较结果保留原 Linux 输入路径，配置中的 54 条 `input_relocations` 按原 SHA-256 映射到已导入文件，原始 `comparison.json` 未被改写。
 
@@ -53,7 +53,7 @@ python -m visualization.verify_results_tavotto --results-config visualization/re
 
 ## 图的统计定义
 
-- **D：`class_diagnostics`**。固定 13 个真实类别、15 个预测列，包括 `Unresolved` 和 `Cascade`。行分母包含全部样本；即使失败列全零也保留。P/R/F1 从同一矩阵重算，并与保存值核对；Precision 在无预测时按评测约定记为 0。仅标注占本行 20% 及以上的单元格，完整计数保存在伴随数据。支持旧中英文类别名及 `label_aliases` 显式映射，未知或重复映射会报错。
+- **D：`class_diagnostics`**。统计仍为固定 13 个真实类别、15 个预测列，包括 `Unresolved` 和 `Cascade`；行分母包含全部样本。画面仅保留预测计数非零的列，Cascade 若非零则排在第一列，零观测留白。正值泡泡的面积按 `0.10 + 0.90 × p^0.6` 平滑，颜色线性对应真实类内占比；面积不与概率成比例。仅标注占本行 20% 及以上的单元格，完整计数保存在伴随数据。P/R/F1 从完整矩阵重算，并与保存值核对；Precision 在无预测时按评测约定记为 0。支持旧中英文类别名及 `label_aliases` 显式映射，未知或重复映射会报错。
 - **E：`error_decomposition`**。最新 `archived_verified` 结果使用显式解析状态，九模型均画五类：T1 无效、T1 有效但错误、T2 无效、T2 有效但叶类错误、叶类正确。五类互斥，合计各模型的 2,600 条；前两类之和对应未进入 T2 的级联样本，最后一类对应 L3 Accuracy。历史旧包缺少显式状态，只能生成三状态预览。
 - **F：`metadata_performance`**。用审核后的 Eval 元数据，在每个叶类内分别对 Active 的 `G_h` 和 Ship 的 `S_src` 计算 1/3、2/3 分位点（NumPy `linear`）。Low 为 `x <= q1`，Middle 为 `q1 < x <= q2`，High 为 `x > q2`。相同数值不拆散，因此不强制每层同样大小。先算每类每层召回率，再对 Active 八类或 Ship 五类等权平均；任何必需类别出现空层时该组该层记为缺失，不按剩余类别偷偷重加权。各模型共用同一份 ID→分层映射。旧包的 `source_stratified` / `per_class_snr` 不直接复用。
 - **G：`silence_control`**。使用九份已保存的 `comparison.json` 与逐样本 `paired_predictions.jsonl`，核对每组 2,600 个 ID/真实标签、两条件的完整原始预测、各自的原音频/静音清单与三轮问题、运行签名、计数及六个输入文件的 SHA-256。两个清单的 SHA-256 分别匹配对应比较结果与协议；两条件逐样本预测分别按自身清单验证，清单的 ID/真实标签相同且除 `audio` 路径外所有字段一致。原音频运行还须与 D/E/F 中的同一模型运行签名一致。左右两面板为 L3/L1 Accuracy，原音频点与静音点成对连线，旁边标 `100*(original-silent)` 个百分点；负值和零值照实保留。图是配对控制的描述性结果，不是显著性检验。包内无 WAV，无法在此流程重新核验静音波形字节；没有真实静音结果时仍会报错，而不会生成虚构图。

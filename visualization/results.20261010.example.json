@@ -2,7 +2,7 @@
   "mode": "archived_verified",
   "cache_dir": "cache/results_20261010",
   "archive_index": "cache/results_20261010_sources/_extraction_manifest.json",
-  "diagnostic_model": "qwen25_omni",
+  "diagnostic_model": "midashenglm",
   "runs": [
     {
       "id": "qwen2_audio",

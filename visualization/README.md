@@ -102,12 +102,12 @@ A2 第六幅对每类全部 200 条 Eval 记录，使用与代表谱相同的 We
 | A2 | `ship_height_mm` | 90 mm |
 | B | `distribution_height_mm` | 110 mm |
 | C | `channel_height_mm` | 115 mm |
-| D | `diagnostic_height_mm` | 120 mm |
+| D | `diagnostic_height_mm` | 112 mm |
 | E | `error_height_mm` | 85 mm |
 | F | `metadata_height_mm` | 85 mm |
 | G | `silence_height_mm` | 85 mm |
 
-调整配置后按常规先重新 `prepare`；结果图再执行 `prepare-results`。只更新绘图代码的默认高度和间距时，可直接运行对应 `render`，不需要重跑评测。D 的十三行类别保留较多高度，使圆角方块、数值和 P/R/F1 标记仍可辨认。
+调整配置后按常规先重新 `prepare`；结果图再执行 `prepare-results`。只更新绘图代码的默认高度和间距时，可直接运行对应 `render`，不需要重跑评测。D 的十三行类别以圆泡、数值和 P/R/F1 点阵表显示。
 
 A2 的六面板图保留五条代表谱和分析参数，并汇总各类全部 Eval 录音的谱质心；此统计单独记录于 `centroid_summary` 和 `raw_data.ship_centroids`。
 
