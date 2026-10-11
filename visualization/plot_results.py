@@ -213,23 +213,28 @@ def build_metadata_performance(data):
     if len(runs) > 9:
         raise ValueError("F supports at most nine models per figure; select a readable subset in results config")
     fig = _figure(data, "metadata_height_mm")
-    # Seven to nine models need three legend rows above the panel titles.
-    panel_top = .72 if len(runs) > 6 else .79
+    # Nine models need a third legend row above the panel titles.
+    panel_top = .72 if len(runs) == 9 else .79
     grid = fig.add_gridspec(1, 2, left=.105, right=.98, bottom=.25, top=panel_top, wspace=.36)
     model_styles = _metadata_styles(runs)
     ranges = {group: model_performance_range(runs, group) for group in ("active", "ship_noise")}
-    recalls = [value for run in runs for group in ("active", "ship_noise")
-               for value in run["metadata"]["groups"][group]["macro_recall"] if value is not None]
-    # Both panels use the same zero-based scale, with room above the highest point.
-    maximum = max(recalls, default=0)
-    tick_step = .05 if maximum <= .175 else .1 if maximum <= .575 else .25
-    upper = min(1.1, max(tick_step * 2, tick_step * np.ceil((maximum + .025) / tick_step)))
-    y_ticks = np.arange(0, min(upper, 1.) + tick_step / 2, tick_step)
+    # Each group has its own zero-based range; the active values are much lower.
+    axis_limits, axis_ticks = {}, {}
+    for group in ("active", "ship_noise"):
+        recalls = [value for run in runs
+                   for value in run["metadata"]["groups"][group]["macro_recall"] if value is not None]
+        maximum = max(recalls, default=0)
+        tick_step = .05 if maximum <= .3 else .1 if maximum <= .7 else .2
+        upper = float(min(1.1, max(tick_step * 2,
+                                   tick_step * np.ceil((maximum + .025) / tick_step))))
+        axis_limits[group] = [0, upper]
+        axis_ticks[group] = np.arange(0, min(upper, 1.) + tick_step / 2, tick_step)
     handles = []
     range_labels = []
     for col, (group, title) in enumerate((("active", r"(a) Active: $G_h$"),
                                          ("ship_noise", r"(b) Ship noise: $S_{\mathrm{src}}$"))):
         ax = fig.add_subplot(grid[0, col])
+        upper = axis_limits[group][1]
         bounds = ranges[group]
         lower = np.array([np.nan if v is None else v for v in bounds["lower"]])
         higher = np.array([np.nan if v is None else v for v in bounds["upper"]])
@@ -242,7 +247,7 @@ def build_metadata_performance(data):
                     label = ax.text(tier, higher[tier] + .02 * upper, f"Δ {gap:.1f} pp",
                                     ha=("left", "center", "right")[tier], va="bottom",
                                     color="#445564", zorder=4)
-                    range_labels.append((ax, label, higher, tier))
+                    range_labels.append((ax, label, higher, tier, upper))
         for run in runs:
             values = [float('nan') if v is None else v for v in run["metadata"]["groups"][group]["macro_recall"]]
             line, = ax.plot(range(3), values, **model_styles[run["id"]], markersize=3.5,
@@ -251,7 +256,7 @@ def build_metadata_performance(data):
         ax.set_xticks(range(3), data["strata"]["names"])
         ax.set_xlim(-.18, 2.18)
         ax.set_ylim(0, upper)
-        ax.set_yticks(y_ticks)
+        ax.set_yticks(axis_ticks[group])
         ax.yaxis.set_major_formatter(PercentFormatter(1, decimals=0))
         ax.set_title(title, pad=5)
         ax.set_xlabel("Within-class stratum")
@@ -262,7 +267,7 @@ def build_metadata_performance(data):
     # Clear the whole text width, including a sloping segment beside its anchor.
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
-    for ax, label, higher, tier in range_labels:
+    for ax, label, higher, tier, upper in range_labels:
         extent = label.get_window_extent(renderer).transformed(ax.transData.inverted())
         heights = [higher[tier]]
         for left in range(2):
@@ -272,18 +277,29 @@ def build_metadata_performance(data):
             if start <= end:
                 heights.extend(np.interp([start, end], [left, left+1], higher[left:left+2]))
         label.set_y(max(heights) + .02 * upper)
-    fig.legend(handles, [r["label"] for r in runs], loc="upper center", bbox_to_anchor=(.52, .995),
-               ncol=3, frameon=data["style"]["legend_frame"], columnspacing=1.2, handlelength=2.5)
-    fig.text(.53, .075, "Shading: model min–max; Δ: gap (pp); equal class weights (8 active / 5 ship)", ha="center")
+    legend_labels = [r["label"] for r in runs]
+    legend_style = {"loc": "upper center", "frameon": data["style"]["legend_frame"],
+                    "columnspacing": 1.0, "handlelength": 2.4}
+    if len(runs) == 9:
+        # Four entries on each of the first two rows, with the ninth centered below.
+        fig.legend(handles[:8], legend_labels[:8], bbox_to_anchor=(.52, .995),
+                   ncol=4, **legend_style)
+        fig.legend(handles[8:], legend_labels[8:], bbox_to_anchor=(.52, .865),
+                   ncol=1, **legend_style)
+    else:
+        fig.legend(handles, legend_labels, bbox_to_anchor=(.52, .995),
+                   ncol=min(4, len(runs)), **legend_style)
+    fig.text(.53, .075, "Independent y ranges; shading: model min–max; Δ: gap (pp)", ha="center")
     fig.text(.53, .018, _run_source_note(data), ha="center")
     return fig, {"figure": "metadata_performance", "mode": data["mode"],
                  "model_styles": model_styles,
+                 "legend_columns": min(4, len(runs)),
                  "between_model_range": {"kind": "pointwise_min_max_across_displayed_models",
                                          "is_confidence_interval": False, "groups": ranges,
                                          "missing_policy": "no bounds if any displayed model is missing in that stratum",
                                          "interpretation": "descriptive range of the selected model runs; not theoretical bounds",
                                          "connections": "straight segments join ordered stratum summaries; no continuous-condition estimate"},
-                 "display_ylim": [0, float(upper)], "shared_zero_based_scale": True,
+                 "display_ylim": axis_limits, "shared_zero_based_scale": False,
                  "runs": [{"id": r["id"], "label": r["label"], **r["metadata"]} for r in runs],
                  "strata": {k: v for k, v in data["strata"].items() if k != "assignments"},
                  "raw_data": {"strata_assignments": data["strata"]["assignments"]},

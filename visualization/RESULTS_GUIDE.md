@@ -60,7 +60,7 @@ python -m visualization.verify_results_tavotto --results-config visualization/re
 
 所有代码只分析已保存结果，不修改 parser/scorer/multi_turn 等受运行协议哈希保护的评测核心文件。
 
-F 的两面板使用相同、从零开始的纵轴范围，上限随所选模型的最大召回率调整并留出余量；最终范围记录在伴随 JSON 的 `display_ylim` 中。
+F 的两面板分别使用从零开始的线性纵轴，上限按各自模型组的最大召回率调整并留出标注余量。当前九模型图的主动信号为 0–15%，舰船为 0–25%；两面板的垂直位置不能脱离各自刻度直接比较。各组最终范围记录在伴随 JSON 的 `display_ylim` 中。
 
 F 的各模型使用不同的颜色、线型和点形。内置模型 ID 的样式固定绑定，改变顺序或选择子集时保持一致；新增模型若需跨图保持一致，应在 `plot_results.py` 的 `_metadata_styles` 中登记 ID。样式保存在 `model_styles` 中。
 
