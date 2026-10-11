@@ -50,7 +50,7 @@ def _metadata_styles(runs):
 
 def build_class_diagnostics(data):
     from matplotlib.cm import ScalarMappable
-    from matplotlib.colors import LinearSegmentedColormap, Normalize
+    from matplotlib.colors import FuncNorm, LinearSegmentedColormap
     from matplotlib.patches import FancyBboxPatch
     from matplotlib.ticker import PercentFormatter
     run = next((r for r in data["runs"] if r["id"] == data["diagnostic_model"]), None)
@@ -62,10 +62,21 @@ def build_class_diagnostics(data):
                            bottom=0.28, top=0.87, wspace=0.52)
     matrix_ax, score_ax = (fig.add_subplot(grid[0, i]) for i in range(2))
     fraction = np.asarray(values["row_fraction"])
+    log_knee = .03
+
+    def signed_log1p(x):
+        x = np.asarray(x, dtype=float)
+        return np.sign(x) * np.log1p(np.abs(x) / log_knee)
+
+    def signed_expm1(y):
+        y = np.asarray(y, dtype=float)
+        return np.sign(y) * log_knee * np.expm1(np.abs(y))
+
+    full_scale = float(signed_log1p(1))
     palette = [(0., "#E4EFF4"), (.15, "#B9D9E3"), (.4, "#66AABB"),
                (.7, "#28758B"), (1., "#12384F")]
     cmap = LinearSegmentedColormap.from_list("uab_mist_teal", palette)
-    color_scale = ScalarMappable(norm=Normalize(0, 1), cmap=cmap)
+    color_scale = ScalarMappable(norm=FuncNorm((signed_log1p, signed_expm1), vmin=0, vmax=1), cmap=cmap)
     # Convert vertical data units so each glyph is square in physical space.
     box = matrix_ax.get_position()
     cell_aspect = (box.width * fig.get_figwidth() / 15) / (box.height * fig.get_figheight() / 13)
@@ -73,8 +84,9 @@ def build_class_diagnostics(data):
     matrix_ax.scatter(zero_cols, zero_rows, s=2, c="#CFD8DE", linewidths=0, zorder=1)
     for row, col in np.argwhere(fraction > 0):
         cell = float(fraction[row, col])
-        # Minimum side keeps small nonzero entries visible. Area is NOT proportional to p.
-        side = .45 + .50 * np.sqrt(cell)
+        # Log compression separates rare and mid-frequency errors while retaining a visible minimum.
+        # Glyph area is a monotonic cue, not a probability-proportional encoding.
+        side = .16 + .78 * float(signed_log1p(cell)) / full_scale
         height = side * cell_aspect
         tile = FancyBboxPatch((col-side/2, row-height/2), side, height,
                              boxstyle=f"round,pad=0,rounding_size={side*.19}",
@@ -106,11 +118,13 @@ def build_class_diagnostics(data):
         score_ax.plot(values[key], np.arange(13)+offset, linestyle="none", marker=marker,
                       markersize=3, color="black", markerfacecolor="white" if key == "recall" else "black",
                       markeredgewidth=0.75, label=label)
-    score_ax.set_xlim(-.035, 1.035)
+    score_ax.set_xscale("function", functions=(signed_log1p, signed_expm1))
+    score_ax.set_xlim(-.01, 1.15)
     score_ax.set_ylim(12.5, -0.5)
-    score_ax.set_xticks([0, .5, 1])
+    score_ax.set_xticks([0, .05, .2, 1])
+    score_ax.xaxis.set_major_formatter(PercentFormatter(1, decimals=0))
     score_ax.set_yticks(range(13), DISPLAY_NAMES)
-    score_ax.set_xlabel("Score", labelpad=3)
+    score_ax.set_xlabel("Score (%) · log1p scale", labelpad=3)
     score_ax.set_ylabel("Class", labelpad=2)
     score_ax.set_title("(b) Class metrics", pad=5)
     score_ax.legend(loc="lower center", bbox_to_anchor=(.5, 1.045), ncol=3,
@@ -124,11 +138,11 @@ def build_class_diagnostics(data):
     cax = fig.add_axes([.14, .12, .36, .018])
     bar = fig.colorbar(color_scale, cax=cax, orientation="horizontal")
     bar.solids.set_rasterized(False)
-    bar.set_ticks([0, .5, 1])
+    bar.set_ticks([0, .05, .2, .5, 1])
     bar.ax.xaxis.set_major_formatter(PercentFormatter(1, decimals=0))
     bar.set_label("True-class share (%)", labelpad=2)
     _axis(cax)
-    fig.text(.755, .098, "Larger, darker squares: higher share\nDots: zero observations",
+    fig.text(.755, .098, "Color / size: log1p(row share)\nDots: zero observations",
              ha="center", va="center", linespacing=1.5)
     fig.suptitle(f"{run['label']}  |  n = {values['n']:,}", y=.99)
     fig.text(.53, .015, _run_source_note(data), ha="center", va="bottom")
@@ -136,11 +150,17 @@ def build_class_diagnostics(data):
                  "audit": run["audit"], "diagnostics": values,
                  "normalization": "all samples of each true class, including unresolved and cascaded predictions",
                  "heatmap_encoding": {"glyph": "rounded square", "palette": palette,
-                                      "color_norm": "linear", "color_limits": [0, 1],
-                                      "positive_side_in_cell_widths": "0.45 + 0.50 * sqrt(row_fraction)",
+                                      "color_norm": "log1p", "color_limits": [0, 1],
+                                      "log1p_knee_fraction": log_knee,
+                                      "color_and_size_transform": "log1p(row_fraction / 0.03) / log1p(1 / 0.03)",
+                                      "positive_side_in_cell_widths": "0.16 + 0.78 * log1p(row_fraction / 0.03) / log1p(1 / 0.03)",
                                       "size_meaning": "monotonic cue; area is not proportional to probability",
                                       "corner_radius_fraction_of_side": .19,
-                                      "zero": "small neutral dot; no colored square"},
+                                      "zero": "small neutral dot; no colored square",
+                                      "cell_label_minimum_fraction": values["annotation_threshold_fraction"]},
+                 "score_axis": {"scale": "zero-preserving signed log1p", "log1p_knee_fraction": log_knee,
+                                "limits": [-.01, 1.15], "ticks_raw_fraction": [0, .05, .2, 1],
+                                "zero_predicted_precision": values["zero_predicted_precision"]},
                  "family_colors": FAMILY_COLORS}
 
 

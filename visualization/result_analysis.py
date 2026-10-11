@@ -56,7 +56,7 @@ def diagnostics(counts) -> dict:
             "precision": precision.tolist(), "recall": recall.tolist(), "f1": f1.tolist(),
             "l3_accuracy": float(tp.sum() / support.sum()),
             "l3_macro_f1": float(np.mean(np.round(f1, 4))),
-            "zero_predicted_precision": 0.0, "annotation_threshold_fraction": 0.1}
+            "zero_predicted_precision": 0.0, "annotation_threshold_fraction": 0.2}
 
 
 def diagnostics_from_metrics(metrics: dict, aliases: dict | None = None) -> dict:
