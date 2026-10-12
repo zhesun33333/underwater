@@ -1,6 +1,7 @@
 """Rounded-square confusion matrix and class metric scatter for result figure D."""
 
 FRAME_WIDTH_PT = .5
+CONFUSION_NUMBER_COLOR = "#343B43"
 
 
 def _validated_diagnostics(data):
@@ -70,9 +71,12 @@ def build_class_diagnostics(data):
                                 bottom=.28 * y_scale, top=.87 * y_scale, wspace=.30)
         matrix_ax, score_ax = (fig.add_subplot(grid[0, i]) for i in range(2))
 
-        palette = [(0., "#E4EFF4"), (.15, "#B9D9E3"), (.4, "#66AABB"),
-                   (.7, "#28758B"), (1., "#12384F")]
-        cmap = LinearSegmentedColormap.from_list("uab_mist_teal_tiles", palette)
+        # Keep the populated 20%-40% interval bright rather than passing
+        # through a neutral gray between the red and blue endpoints.
+        palette = [(0., "#CE7F79"), (.15, "#E3A27E"), (.30, "#EEC880"),
+                   (.43, "#F1E09A"), (.55, "#B7DDC5"), (.70, "#77AFCB"),
+                   (1., "#3E739F")]
+        cmap = LinearSegmentedColormap.from_list("uab_coral_gold_aqua", palette)
         color_scale = ScalarMappable(norm=Normalize(vmin=0, vmax=1), cmap=cmap)
         # A square remains square on paper even if the panel aspect changes.
         box = matrix_ax.get_position()
@@ -92,11 +96,8 @@ def build_class_diagnostics(data):
             matrix_ax.add_patch(tile)
         for row, col in np.argwhere(fraction >= values["annotation_threshold_fraction"]):
             share = float(fraction[row, col])
-            rgb = np.asarray(color_scale.to_rgba(share)[:3])
-            linear = np.where(rgb <= .04045, rgb / 12.92, ((rgb + .055) / 1.055) ** 2.4)
-            luminance = float(linear @ np.array([.2126, .7152, .0722]))
             matrix_ax.text(col, row, f"{100 * share:.0f}", ha="center", va="center",
-                           color="white" if luminance < .179 else "black", zorder=3)
+                           color=CONFUSION_NUMBER_COLOR, zorder=3)
         matrix_ax.set_xlim(-.5, 14.5)
         matrix_ax.set_ylim(12.5, -.5)
         matrix_ax.set_xticks(range(15), prediction_names, rotation=90)
@@ -163,6 +164,7 @@ def build_class_diagnostics(data):
                  "omitted_zero_count_prediction_columns": [],
                  "confusion_encoding": {"glyph": "rounded square", "palette": palette,
                                         "color_scale": "linear row fraction 0 to 1",
+                                        "annotation_color": CONFUSION_NUMBER_COLOR,
                                         "positive_side_in_cell_widths": "0.45 + 0.50 * sqrt(row_fraction)",
                                         "size_meaning": "monotonic cue; area is not proportional to probability",
                                         "zero": "small neutral dot",
