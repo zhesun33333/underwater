@@ -98,8 +98,8 @@ def build_metadata_performance(data):
     if len(runs) > 9:
         raise ValueError("F supports at most nine models per figure; select a readable subset in results config")
     fig = _figure(data, "metadata_height_mm")
-    # Nine models need a third legend row above the panel titles.
-    panel_top = .72 if len(runs) == 9 else .79
+    # Two legend rows leave room above the panel titles for nine models.
+    panel_top = .78 if len(runs) == 9 else .79
     grid = fig.add_gridspec(1, 2, left=.105, right=.98, bottom=.25, top=panel_top, wspace=.36)
     model_styles = _metadata_styles(runs)
     ranges = {group: model_performance_range(runs, group) for group in ("active", "ship_noise")}
@@ -166,11 +166,12 @@ def build_metadata_performance(data):
     legend_style = {"loc": "upper center", "frameon": data["style"]["legend_frame"],
                     "columnspacing": 1.0, "handlelength": 2.4}
     if len(runs) == 9:
-        # Four entries on each of the first two rows, with the ninth centered below.
-        fig.legend(handles[:8], legend_labels[:8], bbox_to_anchor=(.52, .995),
-                   ncol=4, **legend_style)
-        fig.legend(handles[8:], legend_labels[8:], bbox_to_anchor=(.52, .865),
-                   ncol=1, **legend_style)
+        # Keep the previous visual order while moving the ninth model to row two.
+        first_row = (0, 2, 4, 6)
+        second_row = (1, 3, 5, 7, 8)
+        for indices, y in ((first_row, .995), (second_row, .93)):
+            fig.legend([handles[i] for i in indices], [legend_labels[i] for i in indices],
+                       bbox_to_anchor=(.52, y), ncol=len(indices), **legend_style)
     else:
         fig.legend(handles, legend_labels, bbox_to_anchor=(.52, .995),
                    ncol=min(4, len(runs)), **legend_style)
@@ -178,7 +179,7 @@ def build_metadata_performance(data):
     fig.text(.53, .018, _run_source_note(data), ha="center")
     return fig, {"figure": "metadata_performance", "mode": data["mode"],
                  "model_styles": model_styles,
-                 "legend_columns": min(4, len(runs)),
+                 "legend_columns": 5 if len(runs) == 9 else min(4, len(runs)),
                  "between_model_range": {"kind": "pointwise_min_max_across_displayed_models",
                                          "is_confidence_interval": False, "groups": ranges,
                                          "missing_policy": "no bounds if any displayed model is missing in that stratum",
