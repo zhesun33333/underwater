@@ -67,7 +67,7 @@ def build_class_diagnostics(data):
     with paper_style(data["style"]):
         fig = plt.figure(figsize=(width_mm / 25.4, height_mm / 25.4), dpi=300)
         grid = fig.add_gridspec(1, 2, width_ratios=[2.1, 1], left=.12, right=.985,
-                                bottom=.28 * y_scale, top=.87 * y_scale, wspace=.52)
+                                bottom=.28 * y_scale, top=.87 * y_scale, wspace=.30)
         matrix_ax, score_ax = (fig.add_subplot(grid[0, i]) for i in range(2))
 
         palette = [(0., "#E4EFF4"), (.15, "#B9D9E3"), (.4, "#66AABB"),
@@ -132,7 +132,6 @@ def build_class_diagnostics(data):
         score_ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
         score_ax.set_yticks(row_centers, DISPLAY_NAMES)
         score_ax.set_xlabel("Score", labelpad=3)
-        score_ax.set_ylabel("Class", labelpad=1)
         score_ax.set_title("(b) Class metrics", pad=4)
         _axis(score_ax)
         for spine in score_ax.spines.values():
@@ -156,12 +155,6 @@ def build_class_diagnostics(data):
         _axis(cax)
         for spine in cax.spines.values():
             spine.set_linewidth(FRAME_WIDTH_PT)
-        source_note = ("Archived predictions checked against their saved manifest and protocol"
-                       if data["mode"] == "archived_verified" else
-                       "Legacy preview: stored labels; protocol verification unavailable"
-                       if data["mode"] == "legacy_preview" else
-                       "Predictions verified against the current manifest and run protocol")
-        fig.text(.53, .018 * y_scale, source_note, ha="center", va="bottom")
     return fig, {"figure": "class_diagnostics", "model": run["label"], "mode": data["mode"],
                  "audit": run["audit"], "diagnostics": values,
                  "normalization": "all true-class samples, including unresolved and cascaded predictions",
